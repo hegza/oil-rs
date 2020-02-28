@@ -1,0 +1,16 @@
+[package]
+name = "oil"
+version = "0.1.0"
+authors = ["Henri Lunnikivi <henri.lunnikivi@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dialoguer = "^0.5"
+dirs = "^2.0"
+log = "^0.4"
+serde = { version = "^1.0", features = ["derive"] }
+serde_yaml = "^0.8"
+shellexpand = "2.0.0"
+chrono = { version = "^0.4", features = ["serde"] }
