@@ -1,25 +1,22 @@
 mod commands;
 mod error;
-mod event;
+mod event_store;
 
-use crate::config::Config;
-use crate::views::tracker::commands::{match_command, AddCommand};
-use crate::views::tracker::event::{AnnualDay, Event};
+use crate::event::{AnnualDay, Event, Interval, State};
+use crate::prelude::*;
 use chrono::Timelike;
+use commands::{match_command, AddCommand, CommandKind};
 use dialoguer::{
     theme::{ColorfulTheme, CustomPromptCharacterTheme},
     Confirmation, Input, Select,
 };
 pub use error::*;
-use event::{Id, Interval};
-use log::{info, warn};
-use serde::{Deserialize, Serialize};
+use event_store::{EventStore, TrackedEvent, Uid as EventUid};
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
-use std::fs;
-use std::io::Read;
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
+use std::string::ToString;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone, Copy)]
 pub enum ViewState {
@@ -28,21 +25,43 @@ pub enum ViewState {
 }
 
 pub struct Tracker {
-    tracked_events: BTreeMap<Id, Event>,
+    tracked_events: EventStore,
+    id_to_uid: BTreeMap<Id, EventUid>,
     state: ViewState,
+    undo_buffer: Vec<Box<dyn FnOnce(&mut Tracker)>>,
 }
 
 impl Tracker {
-    pub fn with_events(tracked_events: BTreeMap<Id, Event>) -> Tracker {
+    pub fn with_events(tracked_events: EventStore) -> Tracker {
+        let id_to_uid = make_ids(&tracked_events);
+
         Tracker {
             tracked_events,
+            id_to_uid,
             state: ViewState::Extended,
+            undo_buffer: Vec::new(),
         }
     }
     pub fn empty() -> Tracker {
         Tracker {
-            tracked_events: BTreeMap::new(),
+            tracked_events: EventStore::new(),
+            id_to_uid: BTreeMap::new(),
             state: ViewState::Extended,
+            undo_buffer: Vec::new(),
+        }
+    }
+    pub fn from_path<P>(path: P) -> Result<Tracker, LoadError>
+    where
+        P: AsRef<Path>,
+    {
+        debug!(
+            "Reading events for tracker from path: {}",
+            path.as_ref().to_string_lossy()
+        );
+        let events = EventStore::from_file(path);
+        match events {
+            Ok(events) => Ok(Tracker::with_events(events)),
+            Err(e) => Err(e),
         }
     }
 
@@ -51,50 +70,127 @@ impl Tracker {
         P: AsRef<Path>,
     {
         loop {
-            // 0. Display tracker
+            debug!("Interact loop starts");
+
+            // Hint at loop reset
+            println!();
+
+            // 0. Display tracker (main UI)
+            debug!("Visualizing tracker (main 0/4)");
             self.visualize();
 
-            // 1. Get input
+            // 1. Get input from user (main interface)
+            debug!("Getting user input (main 1/4)");
             let input = Input::<String>::with_theme(&CustomPromptCharacterTheme::new('>'))
-                .with_prompt("add, rm <id>, <id>, show, hide, refresh, exit")
                 .allow_empty(true)
                 .interact()
                 .expect("could not parse string from user input");
-            let cmd = match_command(&input);
+            let cmd = match_command(&input, &self.id_to_uid);
 
-            // TODO: 2. Refresh status from disk
-
-            // TODO: 3. Attempt to apply command
-            // If no command was parsed, return to input step
-            let cmd = match cmd {
-                Some(c) => c,
-                None => continue,
-            };
-
-            // Match and apply command
-            use commands::*;
-            match cmd {
-                CommandKind::Exit => break,
-                CommandKind::Show(c) => {
-                    c.apply(self);
-                }
-                CommandKind::Hide(c) => {
-                    c.apply(self);
-                }
-                c => {
-                    Confirmation::new()
-                        .with_text(&format!(
-                            "Command {:?} is not implemented (press anything to continue)",
-                            c
-                        ))
-                        .show_default(false)
-                        .interact()
-                        .unwrap();
-                }
+            // Check for exit
+            if let Some(CommandKind::Exit) = cmd {
+                return;
             }
 
-            // TODO: 4. Store to disk on success
+            // 2. Refresh status from disk
+            debug!("User input received... refreshing state from disk (main 2/4)");
+            match self.refresh_from_disk(&path) {
+                ControlAction::Proceed => {}
+                ControlAction::Exit => return,
+                ControlAction::Input => continue,
+            }
+
+            // 3. Attempt to apply command
+            debug!("Applying command... (main 3/4)");
+            match self.apply_command(cmd) {
+                ControlAction::Proceed => {}
+                ControlAction::Exit => return,
+                ControlAction::Input => continue,
+            }
+
+            // 4. Store to disk on success
+            debug!("Command applied succesfully, storing state to disk (main 4/4)");
+            self.store_to_disk(&path);
         }
+    }
+
+    fn refresh_from_disk<P>(&mut self, path: P) -> ControlAction
+    where
+        P: AsRef<Path>,
+    {
+        self.tracked_events = match EventStore::from_file(&path) {
+            Ok(ev) => ev,
+            Err(e) => {
+                warn!("Could not refresh events from disk: {:?}", e);
+                let text = &format!(
+                "Could not refresh event status from disk before attempting to apply command:\n{:#?}",
+                &e
+            );
+                let choices = ["Cancel"];
+                match crate::views::troubleshoot::choices(text, &choices) {
+                    0 => {
+                        return ControlAction::Input;
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        };
+        self.id_to_uid = make_ids(&self.tracked_events);
+        ControlAction::Proceed
+    }
+
+    pub fn store_to_disk<P>(&self, path: P)
+    where
+        P: AsRef<Path>,
+    {
+        match self.tracked_events.to_file(&path) {
+            Ok(()) => {}
+            Err(_) => {
+                Confirmation::new()
+                    .with_text("Failed to write to disk. Last operation will be cancelled.")
+                    .show_default(false)
+                    .interact()
+                    .unwrap();
+            }
+        }
+    }
+
+    fn apply_command(&mut self, cmd: Option<CommandKind>) -> ControlAction {
+        // If no command was parsed, return to input step
+        let cmd = match cmd {
+            Some(c) => c,
+            None => return ControlAction::Input,
+        };
+
+        // Match and apply command
+        use commands::*;
+        match cmd {
+            CommandKind::Exit => return ControlAction::Exit,
+            CommandKind::Undo => self.undo(),
+            CommandKind::ReversibleCommand(cmd) => {
+                let undo_op = match cmd.apply(self) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        println!("Apply failed: {}", e.to_string());
+                        // Go back to input phase
+                        return ControlAction::Input;
+                    }
+                };
+                self.undo_buffer.push(undo_op);
+            }
+        }
+        ControlAction::Proceed
+    }
+
+    fn undo(&mut self) {
+        // No-op if nothing in buffer
+        if self.undo_buffer.is_empty() {
+            debug!("Attempted to undo with empty undo buffer");
+            return;
+        }
+
+        let undo_op = self.undo_buffer.pop().unwrap();
+        undo_op(self);
     }
 
     fn visualize(&self) {
@@ -105,8 +201,8 @@ impl Tracker {
 
         // Print status
         println!("=== Events ({}) ===", state_str);
-        for (id, event) in &self.tracked_events {
-            println!("#{} - {}", id, event.text());
+        for (idx, (_uid, event)) in self.tracked_events.events().iter().enumerate() {
+            println!("#{id} - {text}", id = idx, text = event.text());
         }
 
         // Print commands
@@ -125,89 +221,72 @@ impl Tracker {
         );
     }
 
-    pub fn from_path<P>(path: P) -> Result<Tracker, LoadError>
-    where
-        P: AsRef<Path>,
-    {
-        match fs::OpenOptions::new().read(true).open(&path) {
-            Ok(mut file) => {
-                let mut contents = String::new();
-                file.read_to_string(&mut contents)
-                    .expect("cannot read file to string");
-
-                if contents.is_empty() {
-                    return Err(LoadError::FileEmpty);
-                }
-
-                // Try load tracker from file
-                let map = serde_yaml::from_str(&contents)
-                    .map_err(|e| LoadError::FileContentsMalformed(Box::new(e)));
-                match map {
-                    Ok(events) => Ok(Tracker::with_events(events)),
-                    Err(e) => Err(e),
-                }
-            }
-            _ => Err(LoadError::FileDoesNotExist),
-        }
-    }
-
-    /// Returns the currently tracker cached in the config, and it's file, none if no tracker is cached
-    pub fn from_config(config: &Config) -> Option<(Tracker, PathBuf)> {
-        let last_open = match &config.last_open {
-            Some(p) => p,
-            None => return None,
-        };
-        let path =
-            PathBuf::try_from(last_open).expect("cannot parse path from cached 'last_open' string");
-
-        match Tracker::from_path(&path) {
-            Ok(tracker) => Some((tracker, path)),
-            Err(LoadError::FileEmpty) => {
-                warn!("A tracker file was found in cache but it was empty, replacing with Tracker::empty()");
-                Some((Tracker::empty(), path))
-            }
-            Err(LoadError::FileDoesNotExist) => {
-                warn!(
-                    "A tracker file was found in cache but not in filesystem at {}",
-                    path.to_str().expect("cannot make path into a string")
-                );
-                None
-            }
-            Err(LoadError::FileContentsMalformed(_)) => {
-                use crate::views::prompt_file::{ask_malformed_action, ActionOnMalformedFile};
-                match ask_malformed_action() {
-                    ActionOnMalformedFile::ReplaceOriginal => {
-                        warn!("Creating a default tracker in place of a malformed one based on user request");
-                        Some((Tracker::empty(), path))
-                    }
-                    ActionOnMalformedFile::Cancel => {
-                        info!(
-                            "User requested cancellation upon encountering malformed tracker cache"
-                        );
-                        panic!(
-                            "User requested cancellation upon encountering malformed tracker cache"
-                        );
-                    }
-                }
-            }
-        }
-    }
-
     /// Returns previous state
     pub fn set_state(&mut self, s: ViewState) -> ViewState {
         let prev = self.state;
         self.state = s;
         prev
     }
+
+    pub fn register_event(&mut self, event: Event) -> EventUid {
+        self.register_event_with_state(event, State::default())
+    }
+
+    // Returns None if an event was not found with id
+    pub fn unregister_event(&mut self, uid: EventUid) -> Option<(Event, State)> {
+        match self.tracked_events.remove(uid) {
+            // Found: also remove from ID's and separate the return value
+            Ok(te) => Some((te.event().clone(), te.state().clone())),
+            // Not found: return None
+            Err(_) => None,
+        }
+    }
+
+    pub fn register_event_with_state(&mut self, event: Event, state: State) -> EventUid {
+        let uid = self.tracked_events.next_free_uid();
+        debug!("Registering a new event with UID {}: {:?}", uid, event);
+        let tracked_event = TrackedEvent::with_state(event, state);
+        trace!("Created TrackedEvent: {:?}", &tracked_event);
+
+        match self.tracked_events.add(uid, tracked_event) {
+            Ok(()) => uid,
+            Err(ItemAlreadyExistsError(k, ov, _)) => {
+                panic!(
+                    "Attempted to register an event with UID {} that was already reserved for: {:#?}", k, ov
+                );
+            }
+        }
+    }
+
+    // Returns None if event not found
+    pub fn complete_now(&mut self, uid: EventUid) -> Option<(OpId, LocalTime)> {
+        match self.tracked_events.get_mut(uid) {
+            Ok(ev) => Some((OpId::next(), ev.complete_now())),
+            Err(_) => None,
+        }
+    }
+
+    pub fn rewind_complete(&mut self, op_id: OpId) {
+        unimplemented!("Rewinding completed items is not implemented")
+    }
 }
 
-pub fn create_event() -> Option<AddCommand> {
+enum ControlAction {
+    Proceed,
+    Input,
+    Exit,
+}
+
+pub fn create_event_interact() -> Option<AddCommand> {
     // What?
     let text = Input::<String>::new()
         .with_prompt("What? (type text)")
-        .allow_empty(false)
+        .allow_empty(true)
         .interact()
         .expect("cannot parse string from user input");
+    if text.is_empty() {
+        return None;
+    }
     println!();
 
     // Interval type?
@@ -274,7 +353,7 @@ pub fn create_event() -> Option<AddCommand> {
                 }
             };
 
-            Interval::Monthly(event::MonthlyDay { day }, time)
+            Interval::Monthly(crate::event::MonthlyDay { day }, time)
         }
         _ => unreachable!(),
     };
@@ -282,7 +361,7 @@ pub fn create_event() -> Option<AddCommand> {
     Some(AddCommand(Event::new(interval, text)))
 }
 
-pub fn create_timedelta() -> Option<event::TimeDelta> {
+pub fn create_timedelta() -> Option<crate::event::TimeDelta> {
     let choices = &[
         // "Days(i32)"
         "Trigger every N days",
@@ -301,14 +380,14 @@ pub fn create_timedelta() -> Option<event::TimeDelta> {
             let days = input_number("Input a number of days for the interval");
             match days {
                 None => return None,
-                Some(d) => Some(event::TimeDelta::Days(d)),
+                Some(d) => Some(crate::event::TimeDelta::Days(d)),
             }
         }
         1 => {
             let time = input_time("Input a time interval, eg. 2:15 for 2 hours 15 minutes");
             match time {
                 None => return None,
-                Some(t) => Some(event::TimeDelta::Hms {
+                Some(t) => Some(crate::event::TimeDelta::Hms {
                     hours: t.hour(),
                     minutes: t.minute(),
                     seconds: t.second(),
@@ -370,4 +449,72 @@ pub fn input_time(prompt: &str) -> Option<chrono::NaiveTime> {
         println!("Cannot parse int from {}\n", input);
         continue;
     }
+}
+
+#[derive(Clone, Copy)]
+pub struct OpId(pub usize);
+
+static OP_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+impl OpId {
+    pub fn next() -> OpId {
+        {
+            OpId(OP_ID_COUNTER.fetch_add(1, Ordering::Relaxed))
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialOrd, Eq, PartialEq, Ord)]
+pub struct Id(pub usize);
+
+impl std::fmt::Display for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+fn make_ids(events: &EventStore) -> BTreeMap<Id, EventUid> {
+    events
+        .events()
+        .iter()
+        .map(|(&uid, _)| uid)
+        .enumerate()
+        .map(|(id, uid)| (Id(id), uid))
+        .collect::<BTreeMap<Id, EventUid>>()
+}
+
+pub fn set_up_at(path: PathBuf) -> (Tracker, PathBuf) {
+    debug!(
+        "Attempting to create Tracker from {}",
+        path.canonicalize()
+            .expect("cannot canonicalize path")
+            .to_string_lossy()
+    );
+    let (tracker, path) = match Tracker::from_path(&path) {
+        Ok(t) => (t, path),
+        Err(LoadError::FileDoesNotExist) => {
+            warn!(
+                "A tracker file was found in cache but not in filesystem at \"{}\", the user may have removed it",
+                path.to_str().expect("cannot make path into a string")
+            );
+            println!(
+                "Last used file does not exist at \"{}\", creating an empty tracker",
+                path.to_string_lossy()
+            );
+            (Tracker::empty(), path)
+        }
+        Err(LoadError::FileContentsMalformed(_, mal_path, _contents)) => {
+            warn!("File contents malformed, asking user for action");
+            super::troubleshoot::ask_malformed_action(PathBuf::from_str(&mal_path).unwrap())
+        }
+    };
+
+    debug!(
+        "Set up complete, storing tracker on disk at: {}",
+        path.canonicalize()
+            .expect("cannot canonicalize path")
+            .to_string_lossy()
+    );
+    tracker.store_to_disk(&path);
+    (tracker, path)
 }

@@ -1,16 +1,14 @@
-use crate::views::prompt_file::ActionOnMalformedFile::{Cancel, ReplaceOriginal};
+use crate::prelude::*;
+use crate::views::prompt_file::PromptPathResult::Path;
 use crate::views::tracker;
 use crate::views::tracker::Tracker;
 use dialoguer::{theme::ColorfulTheme, Input, Select};
-use log::{info, trace, warn};
-use std::convert::TryFrom;
 use std::fs;
 use std::path::PathBuf;
+use std::str::FromStr;
 
-/// Displays a UI for finding or creating a Tracker cache file.
-///
-/// Returns Some(tracker, path) if a valid path is wizarded, and None if user wishes to exit  
-pub fn ask_tracker_file() -> Option<(Tracker, PathBuf)> {
+/// Displays a UI for finding or creating a Tracker cache file.  
+pub fn ask_tracker_file() -> (Tracker, PathBuf) {
     let choices = &[
         "Create a new file for storing events...",
         "Open an existing file with stored events...",
@@ -26,8 +24,20 @@ pub fn ask_tracker_file() -> Option<(Tracker, PathBuf)> {
             .unwrap();
 
         'inner: loop {
-            let default_path = shellexpand::tilde("~/.events.yaml").to_string();
-            match prompt_path(Some(default_path)) {
+            let default_path = match selection {
+                // Create
+                0 => [
+                    dirs::document_dir()
+                        .unwrap_or(PathBuf::from(shellexpand::full(".").unwrap().into_owned())),
+                    PathBuf::from("events.yaml"),
+                ]
+                .iter()
+                .collect::<PathBuf>(),
+                // Open
+                1 => PathBuf::new(),
+                _ => unreachable!(),
+            };
+            match prompt_path(Some(default_path.to_string_lossy().into_owned())) {
                 // Empty path: user wants to exit
                 PromptPathResult::Empty => {
                     println!("Path empty, moving up\n");
@@ -51,19 +61,9 @@ pub fn ask_tracker_file() -> Option<(Tracker, PathBuf)> {
                                 .expect("could not recursively create the directory for the path");
                         }
                         // Create the file
-                        match fs::OpenOptions::new().write(true).create(true).open(&path) {
-                            Ok(_) => {
-                                return Some((Tracker::empty(), path));
-                            }
-                            Err(e) => {
-                                println!(
-                                    "Could not create file '{}': {}",
-                                    &path.to_str().expect("could not parse string from path"),
-                                    e.to_string()
-                                );
-                                continue 'inner;
-                            }
-                        }
+                        let tracker = Tracker::empty();
+                        tracker.store_to_disk(&path);
+                        return (tracker, path);
                     }
                     // Try to read the file and return its contents tracker
                     1 => {
@@ -73,24 +73,16 @@ pub fn ask_tracker_file() -> Option<(Tracker, PathBuf)> {
                         );
                         match Tracker::from_path(&path) {
                             // Tracker could be parsed: return it
-                            Ok(tracker) => return Some((tracker, path)),
-                            // File empty, create default tracker
-                            Err(tracker::LoadError::FileEmpty) => {
-                                warn!("A tracker file was found at {} but it was empty, replacing with Tracker::empty()", &path.to_str().expect("could not parse string from path"));
-                                return Some((Tracker::empty(), path));
-                            }
+                            Ok(tracker) => return (tracker, path),
                             // File was found but contents are malformed: prompt user for action
-                            Err(tracker::LoadError::FileContentsMalformed(_)) => {
-                                match ask_malformed_action() {
-                                    ActionOnMalformedFile::ReplaceOriginal => {
-                                        warn!("Creating a default tracker in place of a malformed one based on user request");
-                                        return Some((Tracker::empty(), path));
-                                    }
-                                    ActionOnMalformedFile::Cancel => {
-                                        info!("User requested cancellation upon encountering malformed tracker cache");
-                                        panic!("User requested cancellation upon encountering malformed tracker cache");
-                                    }
-                                }
+                            Err(tracker::LoadError::FileContentsMalformed(
+                                _,
+                                mal_path,
+                                contents,
+                            )) => {
+                                return crate::views::troubleshoot::ask_malformed_action(
+                                    PathBuf::from_str(&mal_path).unwrap(),
+                                )
                             }
                             // File does not exist, retry
                             Err(tracker::LoadError::FileDoesNotExist) => {
@@ -103,30 +95,6 @@ pub fn ask_tracker_file() -> Option<(Tracker, PathBuf)> {
                 },
             }
         }
-    }
-}
-
-pub enum ActionOnMalformedFile {
-    ReplaceOriginal,
-    Cancel,
-}
-
-pub fn ask_malformed_action() -> ActionOnMalformedFile {
-    let choices = &[
-        "Ignore and exit",
-        "Replace with default",
-        // "Explore file system for a file", // not implemented
-    ];
-    let choice = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("File is malformed, probably older version. What to do?")
-        .default(0)
-        .items(&choices[..])
-        .interact()
-        .unwrap();
-    match choice {
-        0 => Cancel,
-        1 => ReplaceOriginal,
-        _ => unreachable!(),
     }
 }
 

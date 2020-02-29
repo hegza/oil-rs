@@ -1,22 +1,12 @@
-use chrono::{DateTime, Local, NaiveTime as Time, Weekday};
+use crate::prelude::*;
+use chrono::{Local, NaiveTime as Time, Weekday};
 use serde::{Deserialize, Serialize};
-use std::fmt;
-
-pub type LocalTime = DateTime<Local>;
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Ord, PartialOrd, PartialEq, Eq)]
-pub struct Id(pub usize);
-
-impl fmt::Display for Id {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+use std::default::Default;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Event {
-    interval: Interval,
     text: String,
+    interval: Interval,
     stacks: bool,
 }
 
@@ -33,6 +23,20 @@ impl Event {
     }
 }
 
+impl std::fmt::Display for Event {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let stack_str = match self.stacks {
+            false => " (re-trigger overrides)",
+            true => " (re-trigger stacks)",
+        };
+        write!(
+            f,
+            "Event {{ \"{}\", interval: {}{} }}",
+            self.text, &self.interval, stack_str
+        )
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Interval {
     FromLastCompletion(TimeDelta),
@@ -41,6 +45,13 @@ pub enum Interval {
     Weekly(Weekday, Time),
     //Daily(Time), // Not implemented
     //MultiAnnual(Vec<AnnualDay>) // Not implemented
+}
+
+impl std::fmt::Display for Interval {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        warn!("Displaying an interval is not implemented");
+        write!(f, "Interval:Display_not_implemented")
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -65,11 +76,19 @@ pub struct MonthlyDay {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum EventState {
+pub enum State {
     // Never before triggered or completed
     Dormant { registered: LocalTime },
     Triggered(TriggerData),
     Completed(LocalTime),
+}
+
+impl Default for State {
+    fn default() -> Self {
+        State::Dormant {
+            registered: Local::now(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
