@@ -240,6 +240,7 @@ dependencies = [
  "serde",
  "serde_yaml",
  "shellexpand",
+ "simplelog",
 ]
 
 [[package]]
@@ -402,6 +403,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "simplelog"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05a3e303ace6adb0a60a9e9e2fbc6a33e1749d1e43587e2125f7efa9c5e107c5"
+dependencies = [
+ "chrono",
+ "log",
+ "term",
+]
+
+[[package]]
 name = "syn"
 version = "1.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -423,6 +435,16 @@ dependencies = [
  "rand",
  "redox_syscall",
  "remove_dir_all",
+ "winapi",
+]
+
+[[package]]
+name = "term"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0863a3345e70f61d613eab32ee046ccd1bcc5f9105fe402c61fcd0c13eeb8b5"
+dependencies = [
+ "dirs",
  "winapi",
 ]
 
