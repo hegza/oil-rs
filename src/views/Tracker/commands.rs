@@ -51,7 +51,10 @@ pub fn match_command(
                 }
                 Some(id) => match id.parse::<usize>() {
                     Ok(id) => TrackerId(id),
-                    Err(_) => return None,
+                    Err(_) => {
+                        println!("Could not parse {} into an id", id);
+                        return None;
+                    }
                 },
             };
             let uid = match id_to_uid.get(&id) {
@@ -64,31 +67,6 @@ pub fn match_command(
 
             Some(ReversibleCommand(Box::new(RemoveCommand(*uid))))
         }
-        "complete" | "c" => {
-            let id = match tokens.nth(0) {
-                None => {
-                    Confirmation::new()
-                        .with_text("rm requires another parameter: <uid>")
-                        .show_default(false)
-                        .interact()
-                        .unwrap();
-                    return None;
-                }
-                Some(id) => match id.parse::<usize>() {
-                    Ok(id) => TrackerId(id),
-                    Err(_) => return None,
-                },
-            };
-            let uid = match id_to_uid.get(&id) {
-                Some(uid) => uid,
-                None => {
-                    println!("No item found for key {}", id);
-                    return None;
-                }
-            };
-
-            Some(ReversibleCommand(Box::new(CompleteCommand(*uid))))
-        }
         "show" | "s" => Some(ReversibleCommand(Box::new(ShowCommand))),
         "hide" | "h" => Some(ReversibleCommand(Box::new(HideCommand))),
         "undo" | "u" => Some(Undo),
@@ -96,14 +74,24 @@ pub fn match_command(
         // Exit the program
         "exit" | "quit" | "e" | "q" => Some(Exit),
         first_token => {
+            // Try to match a number for "complete command"
             match first_token.parse::<usize>() {
-                Ok(id) => Some(ReversibleCommand(Box::new(CompleteCommand(
-                    id_to_uid[&TrackerId(id)],
-                )))),
+                Ok(id) => {
+                    let uid = match id_to_uid.get(&TrackerId(id)) {
+                        Some(uid) => uid,
+                        None => {
+                            println!("No event found for key {}", id);
+                            return None;
+                        }
+                    };
+
+                    Some(ReversibleCommand(Box::new(CompleteCommand(*uid))))
+                }
 
                 // Nothing was matched, return None
                 Err(_) => {
                     debug!("Nothing was matched from {}", input);
+                    println!("Nothing matched from {}", input);
                     None
                 }
             }

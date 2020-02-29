@@ -186,6 +186,7 @@ impl Tracker {
         // No-op if nothing in buffer
         if self.undo_buffer.is_empty() {
             debug!("Attempted to undo with empty undo buffer");
+            println!("Cannot undo, undo buffer is empty");
             return;
         }
 

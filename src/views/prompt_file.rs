@@ -78,7 +78,7 @@ pub fn ask_tracker_file() -> (Tracker, PathBuf) {
                             Err(tracker::LoadError::FileContentsMalformed(
                                 _,
                                 mal_path,
-                                contents,
+                                _contents,
                             )) => {
                                 return crate::views::troubleshoot::ask_malformed_action(
                                     PathBuf::from_str(&mal_path).unwrap(),
