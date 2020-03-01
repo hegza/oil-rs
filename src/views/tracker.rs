@@ -324,7 +324,7 @@ impl Tracker {
         }
     }
 
-    pub fn rewind_complete(&mut self, op_id: OpId) {
+    pub fn rewind_complete(&mut self, _op_id: OpId) {
         println!("Rewinding completed items is not implemented");
     }
 }
