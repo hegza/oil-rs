@@ -117,7 +117,11 @@ impl CommandKeys {
                         return true;
                     }
                 }
-                KeyMatcher::Usize => return s.parse::<usize>().is_ok(),
+                KeyMatcher::Usize => {
+                    if s.parse::<usize>().is_ok() {
+                        return true;
+                    }
+                }
             }
         }
         false
