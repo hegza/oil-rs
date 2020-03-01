@@ -79,8 +79,9 @@ impl Tracker {
             println!();
 
             // 0. Display tracker (main UI)
-            debug!("Visualizing tracker (main 0/4)");
+            trace!("Refreshing tracked events from disk before visualizing");
             self.tracked_events.refresh_state();
+            debug!("Visualizing tracker (main 0/4)");
             self.visualize();
 
             // 1. Get input from user (main interface)
