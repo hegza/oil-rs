@@ -6,11 +6,7 @@ fn event_lifecycle() {
     let mut tracker = Tracker::empty();
 
     let handle = tracker.add_event(Event::new(
-        Interval::FromLastCompletion(TimeDelta::Hms {
-            hours: 0,
-            minutes: 0,
-            seconds: 5,
-        }),
+        Interval::FromLastCompletion(TimeDelta::Hms(0, 0, 5)),
         "Test Event".to_string(),
     ));
 

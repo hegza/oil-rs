@@ -295,6 +295,11 @@ impl Tracker {
         }
     }
 
+    #[allow(dead_code)]
+    pub fn get_mut_event(&mut self, uid: EventUid) -> Option<&mut TrackedEvent> {
+        self.tracked_events.get_mut(uid).ok()
+    }
+
     // Returns None if event not found
     pub fn complete_now(&mut self, uid: EventUid) -> Option<(OpId, LocalTime)> {
         match self.tracked_events.get_mut(uid) {
