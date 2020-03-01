@@ -8,6 +8,7 @@ use dialoguer::Confirmation;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
+use std::ops::Deref;
 
 pub enum CommandKind {
     ReversibleCommand(Box<dyn Apply>),
@@ -46,6 +47,12 @@ macro_rules! cmd {
 pub static COMMAND_KEYS: CommandKeys = {
     use CommandInput::*;
     CommandKeys(&[
+        cmd!(
+            "<id>",
+            KeyMatcher::Usize,
+            "set event as completed",
+            Complete
+        ),
         cmd!("add", ["add", "a"], "create an event interactively", Add),
         cmd!("rm <id>", ["rm"], "remove registered event", Remove),
         cmd!(
@@ -67,12 +74,6 @@ pub static COMMAND_KEYS: CommandKeys = {
             "exit interactive client",
             Exit
         ),
-        cmd!(
-            "<id>",
-            KeyMatcher::Usize,
-            "set event as completed",
-            Complete
-        ),
     ])
 };
 
@@ -92,11 +93,11 @@ enum CommandInput {
 /// Used for user-interaction displays and for resolving which command to execute.
 pub struct CommandKey {
     /// Name is displayable in UI, 5 characters or so
-    name: &'static str,
+    pub name: &'static str,
     /// The keys are the valid "first words" of input
     keys: KeyMatcher,
     /// Short description displayable in UI as a one-liner
-    short_desc: &'static str,
+    pub short_desc: &'static str,
     /// An enum for matching the inputs to functionality
     command_input: CommandInput,
 }
@@ -143,6 +144,14 @@ impl CommandKeys {
             }
         }
         None
+    }
+}
+
+impl Deref for CommandKeys {
+    type Target = &'static [CommandKey];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

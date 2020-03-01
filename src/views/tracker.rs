@@ -6,6 +6,7 @@ mod tests;
 
 use crate::event::{AnnualDay, Event, Interval, State};
 use crate::prelude::*;
+use crate::views::tracker::commands::COMMAND_KEYS;
 use chrono::{Local, Timelike, Weekday};
 use commands::{match_command, AddCommand, CommandKind};
 use dialoguer::{
@@ -255,18 +256,9 @@ impl Tracker {
 
         // Print commands
         println!("=== Commands ===");
-        println!(
-            "\
-            add     - create an event interactively\n\
-            rm <id> - remove registered event\n\
-            <id>    - set event as completed\n\
-            show    - show untriggered events and extended event status\n\
-            hide    - hide untriggered events and extended event status\n\
-            refresh - refresh events from disk\n\
-            undo    - undo last action\n\
-            exit    - exit interactive client\n\
-            "
-        );
+        for cmd in COMMAND_KEYS.iter() {
+            println!("{:<7} - {}", cmd.name, cmd.short_desc);
+        }
     }
 
     /// Returns previous state
