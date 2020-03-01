@@ -55,8 +55,26 @@ pub enum Interval {
 
 impl std::fmt::Display for Interval {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        warn!("Displaying an interval is not implemented");
-        write!(f, "Interval:Display_not_implemented")
+        use Interval::*;
+        match self {
+            FromLastCompletion(delta) => write!(f, "triggers {} after previous completion", delta),
+            Annual(day, time) => write!(
+                f,
+                "triggers annually on {} at {}",
+                day,
+                time.format("%H:%M")
+            ),
+            Monthly(day, time) => {
+                write!(f, "triggers monthly on {} at {}", day, time.format("%H:%M"))
+            }
+            Weekly(weekday, time) => write!(
+                f,
+                "triggers weekly on {} at {}",
+                weekday,
+                time.format("%H:%M")
+            ),
+            Daily(time) => write!(f, "triggers daily at {}", time.format("%H:%M")),
+        }
     }
 }
 
@@ -64,6 +82,17 @@ impl std::fmt::Display for Interval {
 pub enum TimeDelta {
     Days(i64),
     Hms(i64, i64, i64),
+}
+
+impl std::fmt::Display for TimeDelta {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use TimeDelta::*;
+        match self {
+            Days(n) => write!(f, "{} days", n),
+            // TODO: could leave out units for zero inputs
+            Hms(h, m, s) => write!(f, "{}h{}m{}s", h, m, s),
+        }
+    }
 }
 
 impl TimeDelta {
@@ -88,9 +117,21 @@ pub struct AnnualDay {
     pub day: u32,
 }
 
+impl std::fmt::Display for AnnualDay {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}.", self.month, self.day)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MonthlyDay {
     pub day: u32,
+}
+
+impl std::fmt::Display for MonthlyDay {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.", self.day)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

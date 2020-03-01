@@ -1,6 +1,6 @@
 use crate::event::{AnnualDay, Event, Interval, MonthlyDay, State};
 use crate::prelude::*;
-use chrono::{Datelike, FixedOffset, Local, NaiveDate, Utc};
+use chrono::{Datelike, FixedOffset, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
