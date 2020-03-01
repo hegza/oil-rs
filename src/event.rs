@@ -162,3 +162,16 @@ impl Default for State {
         State::Dormant(Local::now())
     }
 }
+
+impl State {
+    pub fn trigger_now(&mut self, now: LocalTime) {
+        match self {
+            State::Dormant { .. } | State::Completed(_) => {
+                *self = State::Triggered(vec![now]);
+            }
+            State::Triggered(trigger_times) => {
+                trigger_times.push(now);
+            }
+        }
+    }
+}
