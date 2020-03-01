@@ -267,7 +267,10 @@ impl Tracker {
     pub fn remove_event(&mut self, uid: EventUid) -> Option<(Event, State)> {
         match self.tracked_events.remove(uid) {
             // Found: also remove from ID's and separate the return value
-            Ok(te) => Some((te.event().clone(), te.state().clone())),
+            Ok(te) => {
+                self.id_to_uid = make_ids(&self.tracked_events);
+                Some((te.event().clone(), te.state().clone()))
+            }
             // Not found: return None
             Err(_) => None,
         }
@@ -280,7 +283,10 @@ impl Tracker {
         trace!("Created TrackedEvent: {:?}", &tracked_event);
 
         match self.tracked_events.add(uid, tracked_event) {
-            Ok(()) => uid,
+            Ok(()) => {
+                self.id_to_uid = make_ids(&self.tracked_events);
+                uid
+            }
             Err(ItemAlreadyExistsError(k, ov, _)) => {
                 panic!(
                     "Attempted to register an event with UID {} that was already reserved for: {:#?}", k, ov
