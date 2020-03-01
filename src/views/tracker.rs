@@ -211,11 +211,26 @@ impl Tracker {
         for (idx, (_uid, event)) in self.tracked_events.events().iter().enumerate() {
             match self.state {
                 ViewState::Standard => match event.state() {
-                    // Only show triggered entries
+                    // Show triggered entries
                     State::Triggered(_) => {
                         println!("* ({id:>2}) - {text}", id = idx, text = event.text());
                     }
-                    _ => {}
+                    // Show other entries if their next trigger is within look-ahead scope
+                    _ => {
+                        if let Some(remaining) = event.fraction_of_interval_remaining(&now) {
+                            if remaining < (1. / 12.) {
+                                println!(
+                                    "  ({id:>2}) - {text} (untriggered until {time})",
+                                    id = idx,
+                                    text = event.text(),
+                                    time = event
+                                        .next_trigger_time(&now)
+                                        .unwrap()
+                                        .format("%d.%m. %H:%M")
+                                );
+                            }
+                        }
+                    }
                 },
                 ViewState::Extended => {
                     println!(

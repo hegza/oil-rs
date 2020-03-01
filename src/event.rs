@@ -53,6 +53,19 @@ pub enum Interval {
     //MultiAnnual(Vec<AnnualDay>) // Not implemented
 }
 
+impl Interval {
+    pub fn to_duration_heuristic(&self) -> Duration {
+        use Interval::*;
+        match self {
+            FromLastCompletion(delta) => delta.to_duration(),
+            Annual(_, _) => Duration::days(365),
+            Monthly(_, _) => Duration::days(30),
+            Weekly(_, _) => Duration::days(7),
+            Daily(_) => Duration::days(1),
+        }
+    }
+}
+
 impl std::fmt::Display for Interval {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Interval::*;

@@ -47,6 +47,31 @@ impl TrackedEvent {
             }
         }
     }
+    pub fn fraction_of_interval_remaining(&self, at_time: &LocalTime) -> Option<f64> {
+        let state = self.state();
+        let event = self.event();
+
+        // Does not stack -> does not re-trigger
+        if let State::Triggered(_) = state {
+            if !event.stacks() {
+                return None;
+            }
+        }
+
+        match self.next_trigger_time(at_time) {
+            // Wait doesn't apply if the event is not going to trigger
+            None => return None,
+            Some(next) => {
+                let seconds_until_next = next.signed_duration_since(*at_time).num_seconds();
+                let interval_seconds = event.interval().to_duration_heuristic().num_seconds();
+
+                match interval_seconds {
+                    0 => Some(0.),
+                    int => Some(seconds_until_next as f64 / int as f64),
+                }
+            }
+        }
+    }
     /// Returns the next time this event is going to trigger counting from given time
     pub fn next_trigger_time(&self, counting_from: &LocalTime) -> Option<LocalTime> {
         let interval = self.event().interval();
