@@ -49,7 +49,7 @@ pub enum Interval {
     Annual(AnnualDay, Time),
     Monthly(MonthlyDay, Time),
     Weekly(Weekday, Time),
-    //Daily(Time), // Not implemented
+    Daily(Time),
     //MultiAnnual(Vec<AnnualDay>) // Not implemented
 }
 

@@ -133,6 +133,34 @@ impl TrackedEvent {
                     an_instance
                 })
             }
+            Interval::Daily(time) => {
+                let an_instance = UtcTime::from_utc(
+                    NaiveDate::from_ymd(
+                        counting_from.year(),
+                        counting_from.month(),
+                        counting_from.day(),
+                    )
+                    .and_time(*time),
+                    Utc,
+                )
+                .with_timezone(&Local);
+
+                // If the constructed instance is before our time, move it one month forward and return
+                Some(if &an_instance < counting_from {
+                    UtcTime::from_utc(
+                        NaiveDate::from_ymd(
+                            counting_from.year(),
+                            counting_from.month(),
+                            counting_from.day() + 1,
+                        )
+                        .and_time(*time),
+                        Utc,
+                    )
+                    .with_timezone(&Local)
+                } else {
+                    an_instance
+                })
+            }
         }
     }
 }

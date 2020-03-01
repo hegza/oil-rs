@@ -322,11 +322,11 @@ pub fn create_event_interact() -> Option<AddCommand> {
 
     // Interval type?
     let choices = &[
-        // FromLastCompletion(Duration)
         "A constant time after the last completion of the event",
-        "Annual(AnnualDay, Time)",
-        "Monthly(MonthlyDay, Time)",
-        "Weekly(Weekday, Time)", // Not implemented!
+        "Daily",
+        "Weekly",
+        "Monthly",
+        "Annually",
     ];
 
     let selection = Select::with_theme(&ColorfulTheme::default())
@@ -343,21 +343,8 @@ pub fn create_event_interact() -> Option<AddCommand> {
             }
             Some(td) => Interval::FromLastCompletion(td),
         },
+        // Daily
         1 => {
-            let month = match input("Which month? (number)") {
-                Some(m) => m,
-                None => {
-                    println!("Aborting 'add event'");
-                    return None;
-                }
-            };
-            let day = match input("Which day? (number)") {
-                Some(m) => m,
-                None => {
-                    println!("Aborting 'add event'");
-                    return None;
-                }
-            };
             let time = match input_time("At what time?") {
                 Some(t) => t,
                 None => {
@@ -365,28 +352,10 @@ pub fn create_event_interact() -> Option<AddCommand> {
                     return None;
                 }
             };
-
-            Interval::Annual(AnnualDay { month, day }, time)
+            Interval::Daily(time)
         }
+        // Weekly
         2 => {
-            let day = match input("Which day? (number)") {
-                Some(d) => d,
-                None => {
-                    println!("Aborting 'add event'");
-                    return None;
-                }
-            };
-            let time = match input_time("At what time?") {
-                Some(t) => t,
-                None => {
-                    println!("Aborting 'add event'");
-                    return None;
-                }
-            };
-
-            Interval::Monthly(crate::event::MonthlyDay { day }, time)
-        }
-        3 => {
             let weekday = match crate::views::troubleshoot::choices(
                 "Which day of the week? (number)",
                 &[
@@ -417,6 +386,51 @@ pub fn create_event_interact() -> Option<AddCommand> {
             };
 
             Interval::Weekly(weekday, time)
+        }
+        // Monthly
+        3 => {
+            let day = match input("Which day? (number)") {
+                Some(d) => d,
+                None => {
+                    println!("Aborting 'add event'");
+                    return None;
+                }
+            };
+            let time = match input_time("At what time?") {
+                Some(t) => t,
+                None => {
+                    println!("Aborting 'add event'");
+                    return None;
+                }
+            };
+
+            Interval::Monthly(crate::event::MonthlyDay { day }, time)
+        }
+        // Annually
+        4 => {
+            let month = match input("Which month? (number)") {
+                Some(m) => m,
+                None => {
+                    println!("Aborting 'add event'");
+                    return None;
+                }
+            };
+            let day = match input("Which day? (number)") {
+                Some(m) => m,
+                None => {
+                    println!("Aborting 'add event'");
+                    return None;
+                }
+            };
+            let time = match input_time("At what time?") {
+                Some(t) => t,
+                None => {
+                    println!("Aborting 'add event'");
+                    return None;
+                }
+            };
+
+            Interval::Annual(AnnualDay { month, day }, time)
         }
         _ => unreachable!(),
     };
