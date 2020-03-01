@@ -11,7 +11,7 @@ fn event_lifecycle() {
     ));
 
     // Verify that the event is accessible with its handle
-    let event = tracker.get_mut_event(handle).unwrap();
+    let event = tracker.get_event_mut(handle).unwrap();
 
     // Verify that the event is in dormant state
     match event.state() {
@@ -25,5 +25,5 @@ fn event_lifecycle() {
     tracker.remove_event(handle);
 
     // Verify that the event is removed
-    assert!(tracker.get_mut_event(handle).is_none());
+    assert!(tracker.get_event_mut(handle).is_none());
 }

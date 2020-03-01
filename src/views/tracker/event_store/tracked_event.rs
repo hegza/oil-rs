@@ -10,11 +10,6 @@ impl TrackedEvent {
     pub fn with_state(source: Event, state: State) -> TrackedEvent {
         TrackedEvent(source, state)
     }
-    pub fn complete_now(&mut self) -> LocalTime {
-        let now = Local::now();
-        self.1 = State::Completed(now);
-        now
-    }
     pub fn text(&self) -> &str {
         self.0.text()
     }
@@ -37,15 +32,13 @@ impl TrackedEvent {
         };
 
         if now >= next {
-            match self.state_mut() {
-                State::Dormant { .. } | State::Completed(_) => {
-                    self.1 = State::Triggered(vec![now]);
-                }
-                State::Triggered(trigger_times) => {
-                    trigger_times.push(now);
-                }
-            }
+            self.trigger_now(now);
         }
+    }
+    /// Returns if event was actually triggered
+    pub fn trigger_now(&mut self, now: LocalTime) -> bool {
+        self.state_mut().trigger_now(now);
+        true
     }
     pub fn fraction_of_interval_remaining(&self, at_time: &LocalTime) -> Option<f64> {
         let state = self.state();

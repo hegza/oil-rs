@@ -8,7 +8,7 @@ use crate::event::{AnnualDay, Event, Interval, State};
 use crate::prelude::*;
 use crate::views::tracker::commands::COMMAND_KEYS;
 use chrono::{Local, Timelike, Weekday};
-use commands::{match_command, AddCommand, CommandKind};
+use commands::{match_command, CommandKind, CreateCommand};
 use dialoguer::{
     theme::{ColorfulTheme, CustomPromptCharacterTheme},
     Confirmation, Input, Select,
@@ -20,7 +20,6 @@ use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::string::ToString;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone, Copy)]
 pub enum ViewState {
@@ -189,6 +188,8 @@ impl Tracker {
     }
 
     fn undo(&mut self) {
+        trace!("Undo starts");
+
         // No-op if nothing in buffer
         if self.undo_buffer.is_empty() {
             debug!("Attempted to undo with empty undo buffer");
@@ -304,21 +305,15 @@ impl Tracker {
         }
     }
 
+    /// Returns the event as mutable if it exists with given UID
     #[allow(dead_code)]
-    pub fn get_mut_event(&mut self, uid: EventUid) -> Option<&mut TrackedEvent> {
+    pub fn get_event_mut(&mut self, uid: EventUid) -> Option<&mut TrackedEvent> {
         self.tracked_events.get_mut(uid).ok()
     }
 
-    // Returns None if event not found
-    pub fn complete_now(&mut self, uid: EventUid) -> Option<(OpId, LocalTime)> {
-        match self.tracked_events.get_mut(uid) {
-            Ok(ev) => Some((OpId::next(), ev.complete_now())),
-            Err(_) => None,
-        }
-    }
-
-    pub fn rewind_complete(&mut self, _op_id: OpId) {
-        println!("Rewinding completed items is not implemented");
+    /// Gets the state of the event as mutable if event exists with given UID
+    pub fn get_event_state_mut(&mut self, uid: EventUid) -> Option<&mut State> {
+        self.get_event_mut(uid).map(|e| e.state_mut())
     }
 }
 
@@ -328,7 +323,7 @@ enum ControlAction {
     Exit,
 }
 
-pub fn create_event_interact() -> Option<AddCommand> {
+pub fn create_event_interact() -> Option<CreateCommand> {
     // What?
     let text = Input::<String>::new()
         .with_prompt("What? (type text)")
@@ -455,7 +450,7 @@ pub fn create_event_interact() -> Option<AddCommand> {
         _ => unreachable!(),
     };
 
-    Some(AddCommand(Event::new(interval, text)))
+    Some(CreateCommand(Event::new(interval, text)))
 }
 
 pub fn create_timedelta() -> Option<crate::event::TimeDelta> {
@@ -548,19 +543,6 @@ pub fn input_time(prompt: &str) -> Option<chrono::NaiveTime> {
         }
         println!("Cannot parse int from {}\n", input);
         continue;
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct OpId(pub usize);
-
-static OP_ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-impl OpId {
-    pub fn next() -> OpId {
-        {
-            OpId(OP_ID_COUNTER.fetch_add(1, Ordering::Relaxed))
-        }
     }
 }
 
