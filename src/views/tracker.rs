@@ -258,7 +258,7 @@ impl Tracker {
         // Print commands
         println!("=== Commands ===");
         for cmd in COMMAND_KEYS.iter() {
-            println!("{:<7} - {}", cmd.name, cmd.short_desc);
+            println!("{:<10} - {}", cmd.name, cmd.short_desc);
         }
     }
 

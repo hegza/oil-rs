@@ -69,7 +69,7 @@ pub static COMMAND_KEYS: CommandKeys = {
             Alter
         ),
         cmd!(
-            "trigger <id>",
+            "trig <id>",
             ["trigger", "trig", "t"],
             "manually trigger an event now",
             Trigger
