@@ -149,11 +149,11 @@ impl Apply for AddCommand {
         let event = self.0.clone();
 
         // Op
-        let uid = tracker.register_event(event);
+        let uid = tracker.add_event(event);
 
         // Undo
         Ok(Box::new(move |tracker| {
-            tracker.unregister_event(uid);
+            tracker.remove_event(uid);
         }))
     }
 }
@@ -170,7 +170,7 @@ impl Apply for RemoveCommand {
         let uid = self.0;
 
         // Op
-        let (event, state) = match tracker.unregister_event(uid) {
+        let (event, state) = match tracker.remove_event(uid) {
             None => {
                 warn!(
                     "Tried to unregister a non-existing event with unique-uid {} -> no-op",
@@ -183,7 +183,7 @@ impl Apply for RemoveCommand {
 
         // Undo
         Ok(Box::new(move |tracker| {
-            tracker.register_event_with_state(event, state);
+            tracker.add_event_with_state(event, state);
         }))
     }
 }

@@ -1,10 +1,12 @@
 mod commands;
 mod error;
 mod event_store;
+#[cfg(test)]
+mod tests;
 
 use crate::event::{AnnualDay, Event, Interval, State};
 use crate::prelude::*;
-use chrono::Timelike;
+use chrono::{Local, Timelike, Weekday};
 use commands::{match_command, AddCommand, CommandKind};
 use dialoguer::{
     theme::{ColorfulTheme, CustomPromptCharacterTheme},
@@ -13,6 +15,7 @@ use dialoguer::{
 pub use error::*;
 use event_store::{EventStore, TrackedEvent, Uid as EventUid};
 use std::collections::BTreeMap;
+use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::string::ToString;
@@ -77,6 +80,7 @@ impl Tracker {
 
             // 0. Display tracker (main UI)
             debug!("Visualizing tracker (main 0/4)");
+            self.tracked_events.refresh_state();
             self.visualize();
 
             // 1. Get input from user (main interface)
@@ -195,6 +199,8 @@ impl Tracker {
     }
 
     fn visualize(&self) {
+        let now = Local::now();
+
         let state_str = match self.state {
             ViewState::Standard => "standard",
             ViewState::Extended => "extended",
@@ -203,7 +209,27 @@ impl Tracker {
         // Print status
         println!("=== Events ({}) ===", state_str);
         for (idx, (_uid, event)) in self.tracked_events.events().iter().enumerate() {
-            println!("#{id} - {text}", id = idx, text = event.text());
+            match self.state {
+                ViewState::Standard => match event.state() {
+                    // Only show triggered entries
+                    State::Triggered(_) => {
+                        println!("#{id} - {text}", id = idx, text = event.text());
+                    }
+                    _ => {}
+                },
+                ViewState::Extended => {
+                    println!(
+                        "({id:>2}) {next:>16} - {text} ({state:?})",
+                        id = idx,
+                        text = event.text(),
+                        next = match event.next_trigger_time(&now) {
+                            None => "None".to_string(),
+                            Some(time) => format!("{}", time.format("%a %d.%m. %H:%M")),
+                        },
+                        state = event.state()
+                    );
+                }
+            }
         }
 
         // Print commands
@@ -229,12 +255,12 @@ impl Tracker {
         prev
     }
 
-    pub fn register_event(&mut self, event: Event) -> EventUid {
-        self.register_event_with_state(event, State::default())
+    pub fn add_event(&mut self, event: Event) -> EventUid {
+        self.add_event_with_state(event, State::default())
     }
 
     // Returns None if an event was not found with id
-    pub fn unregister_event(&mut self, uid: EventUid) -> Option<(Event, State)> {
+    pub fn remove_event(&mut self, uid: EventUid) -> Option<(Event, State)> {
         match self.tracked_events.remove(uid) {
             // Found: also remove from ID's and separate the return value
             Ok(te) => Some((te.event().clone(), te.state().clone())),
@@ -243,7 +269,7 @@ impl Tracker {
         }
     }
 
-    pub fn register_event_with_state(&mut self, event: Event, state: State) -> EventUid {
+    pub fn add_event_with_state(&mut self, event: Event, state: State) -> EventUid {
         let uid = self.tracked_events.next_free_uid();
         debug!("Registering a new event with UID {}: {:?}", uid, event);
         let tracked_event = TrackedEvent::with_state(event, state);
@@ -268,7 +294,7 @@ impl Tracker {
     }
 
     pub fn rewind_complete(&mut self, op_id: OpId) {
-        unimplemented!("Rewinding completed items is not implemented")
+        println!("Rewinding completed items is not implemented");
     }
 }
 
@@ -296,7 +322,7 @@ pub fn create_event_interact() -> Option<AddCommand> {
         "A constant time after the last completion of the event",
         "Annual(AnnualDay, Time)",
         "Monthly(MonthlyDay, Time)",
-        //"Weekly(Weekday, Time)", // Not implemented!
+        "Weekly(Weekday, Time)", // Not implemented!
     ];
 
     let selection = Select::with_theme(&ColorfulTheme::default())
@@ -314,14 +340,14 @@ pub fn create_event_interact() -> Option<AddCommand> {
             Some(td) => Interval::FromLastCompletion(td),
         },
         1 => {
-            let month = match input_number("Which month? (number)") {
+            let month = match input("Which month? (number)") {
                 Some(m) => m,
                 None => {
                     println!("Aborting 'add event'");
                     return None;
                 }
             };
-            let day = match input_number("Which day? (number)") {
+            let day = match input("Which day? (number)") {
                 Some(m) => m,
                 None => {
                     println!("Aborting 'add event'");
@@ -339,7 +365,7 @@ pub fn create_event_interact() -> Option<AddCommand> {
             Interval::Annual(AnnualDay { month, day }, time)
         }
         2 => {
-            let day = match input_number("Which day? (number)") {
+            let day = match input("Which day? (number)") {
                 Some(d) => d,
                 None => {
                     println!("Aborting 'add event'");
@@ -355,6 +381,38 @@ pub fn create_event_interact() -> Option<AddCommand> {
             };
 
             Interval::Monthly(crate::event::MonthlyDay { day }, time)
+        }
+        3 => {
+            let weekday = match crate::views::troubleshoot::choices(
+                "Which day of the week? (number)",
+                &[
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday",
+                    "Saturday",
+                    "Sunday",
+                ],
+            ) {
+                0 => Weekday::Mon,
+                1 => Weekday::Tue,
+                2 => Weekday::Wed,
+                3 => Weekday::Thu,
+                4 => Weekday::Fri,
+                5 => Weekday::Sat,
+                6 => Weekday::Sun,
+                _ => unreachable!(),
+            };
+            let time = match input_time("At what time?") {
+                Some(t) => t,
+                None => {
+                    println!("Aborting 'add event'");
+                    return None;
+                }
+            };
+
+            Interval::Weekly(weekday, time)
         }
         _ => unreachable!(),
     };
@@ -378,7 +436,7 @@ pub fn create_timedelta() -> Option<crate::event::TimeDelta> {
         .unwrap();
     match selection {
         0 => {
-            let days = input_number("Input a number of days for the interval");
+            let days = input("Input a number of days for the interval");
             match days {
                 None => return None,
                 Some(d) => Some(crate::event::TimeDelta::Days(d)),
@@ -388,18 +446,21 @@ pub fn create_timedelta() -> Option<crate::event::TimeDelta> {
             let time = input_time("Input a time interval, eg. 2:15 for 2 hours 15 minutes");
             match time {
                 None => return None,
-                Some(t) => Some(crate::event::TimeDelta::Hms {
-                    hours: t.hour(),
-                    minutes: t.minute(),
-                    seconds: t.second(),
-                }),
+                Some(t) => Some(crate::event::TimeDelta::Hms(
+                    t.hour().try_into().unwrap(),
+                    t.minute().try_into().unwrap(),
+                    t.second().try_into().unwrap(),
+                )),
             }
         }
         _ => unreachable!(),
     }
 }
 
-pub fn input_number(prompt: &str) -> Option<i32> {
+pub fn input<T>(prompt: &str) -> Option<T>
+where
+    T: FromStr,
+{
     loop {
         let input = Input::<String>::new()
             .with_prompt(prompt)

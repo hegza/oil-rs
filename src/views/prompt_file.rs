@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use crate::views::prompt_file::PromptPathResult::Path;
 use crate::views::tracker;
 use crate::views::tracker::Tracker;
 use dialoguer::{theme::ColorfulTheme, Input, Select};

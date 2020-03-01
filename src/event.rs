@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use chrono::{Local, NaiveTime as Time, Weekday};
+use chrono::{Duration, Local, NaiveTime as Time, Weekday};
 use serde::{Deserialize, Serialize};
 use std::default::Default;
 
@@ -15,11 +15,17 @@ impl Event {
         Event {
             interval,
             text,
-            stacks: true,
+            stacks: false,
         }
     }
     pub fn text(&self) -> &str {
         &self.text
+    }
+    pub fn interval(&self) -> &Interval {
+        &self.interval
+    }
+    pub fn stacks(&self) -> bool {
+        self.stacks
     }
 }
 
@@ -56,51 +62,49 @@ impl std::fmt::Display for Interval {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum TimeDelta {
-    Days(i32),
-    Hms {
-        hours: u32,
-        minutes: u32,
-        seconds: u32,
-    },
+    Days(i64),
+    Hms(i64, i64, i64),
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct AnnualDay {
-    pub month: i32,
-    pub day: i32,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct MonthlyDay {
-    pub day: i32,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum State {
-    // Never before triggered or completed
-    Dormant { registered: LocalTime },
-    Triggered(TriggerData),
-    Completed(LocalTime),
-}
-
-impl Default for State {
-    fn default() -> Self {
-        State::Dormant {
-            registered: Local::now(),
+impl TimeDelta {
+    pub fn apply_to(&self, time: LocalTime) -> LocalTime {
+        time + self.to_duration()
+    }
+    pub fn to_duration(&self) -> Duration {
+        match self {
+            TimeDelta::Days(d) => Duration::days(*d),
+            TimeDelta::Hms(h, m, s) => {
+                Duration::hours(*h as i64)
+                    + Duration::minutes(*m as i64)
+                    + Duration::seconds(*s as i64)
+            }
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct TriggerData {
-    trigger_times: Vec<LocalTime>,
+pub struct AnnualDay {
+    pub month: u32,
+    pub day: u32,
 }
 
-impl TriggerData {
-    pub fn first_triggered(&self) -> &LocalTime {
-        self.trigger_times.first().unwrap()
-    }
-    pub fn last_triggered(&self) -> &LocalTime {
-        self.trigger_times.last().unwrap()
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MonthlyDay {
+    pub day: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum State {
+    // Never before triggered or completed, .0 is time registered
+    Dormant(LocalTime),
+    // .0 is all trigger times since last completion
+    Triggered(Vec<LocalTime>),
+    // Completed and ready to trigger again
+    Completed(LocalTime),
+}
+
+impl Default for State {
+    fn default() -> Self {
+        State::Dormant(Local::now())
     }
 }

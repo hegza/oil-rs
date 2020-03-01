@@ -43,7 +43,10 @@ impl EventStore {
                 // Try load tracker from file
                 let events = serde_yaml::from_str::<EventStore>(&contents);
                 match events {
-                    Ok(x) => Ok(x),
+                    Ok(mut events) => {
+                        events.refresh_state();
+                        Ok(events)
+                    }
                     Err(e) => Err(LoadError::FileContentsMalformed(
                         Box::new(e),
                         path.as_ref().to_string_lossy().to_string(),
@@ -94,6 +97,12 @@ impl EventStore {
     /// Returns the stored events as an ordered map (inner type)
     pub fn events(&self) -> &BTreeMap<Uid, TrackedEvent> {
         &self.0
+    }
+
+    pub fn refresh_state(&mut self) {
+        for tracked_event in self.0.values_mut() {
+            tracked_event.update();
+        }
     }
 
     /// Resolves the next free UID based on the events that currently exist
