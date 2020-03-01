@@ -45,7 +45,12 @@ fn main() {
         None => {
             info!("No 'last opened' in config, asking user for a tracker file");
             let (tracker, path) = views::prompt_file::ask_tracker_file();
-            config.last_open = Some(path.to_string_lossy().to_string());
+            config.last_open = Some(
+                path.canonicalize()
+                    .expect("cannot canonicalize path")
+                    .to_string_lossy()
+                    .to_string(),
+            );
             config.store_default();
             (tracker, path)
         }
