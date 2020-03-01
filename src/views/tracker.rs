@@ -213,20 +213,24 @@ impl Tracker {
                 ViewState::Standard => match event.state() {
                     // Only show triggered entries
                     State::Triggered(_) => {
-                        println!("#{id} - {text}", id = idx, text = event.text());
+                        println!("* ({id:>2}) - {text}", id = idx, text = event.text());
                     }
                     _ => {}
                 },
                 ViewState::Extended => {
                     println!(
-                        "({id:>2}) {next:>16} - {text} ({state:?})",
+                        "{trig} ({id:>2}) {next:>16} - {text} ({state:?})",
                         id = idx,
                         text = event.text(),
                         next = match event.next_trigger_time(&now) {
-                            None => "None".to_string(),
+                            None => "Not scheduled".to_string(),
                             Some(time) => format!("{}", time.format("%a %d.%m. %H:%M")),
                         },
-                        state = event.state()
+                        state = event.state(),
+                        trig = match event.state() {
+                            State::Triggered(_) => "*",
+                            _ => " ",
+                        }
                     );
                 }
             }
