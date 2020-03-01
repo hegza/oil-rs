@@ -213,20 +213,20 @@ impl Tracker {
                 ViewState::Standard => match event.state() {
                     // Show triggered entries
                     State::Triggered(_) => {
-                        println!("* ({id:>2}) - {text}", id = idx, text = event.text());
+                        println!("* ({id:>2})   {text}", id = idx, text = event.text());
                     }
                     // Show other entries if their next trigger is within look-ahead scope
                     _ => {
                         if let Some(remaining) = event.fraction_of_interval_remaining(&now) {
                             if remaining < (1. / 12.) {
                                 println!(
-                                    "  ({id:>2}) - {text} (untriggered until {time})",
+                                    "  ({id:>2})   ({text}) - (triggers {time})",
                                     id = idx,
                                     text = event.text(),
                                     time = event
                                         .next_trigger_time(&now)
                                         .unwrap()
-                                        .format("%d.%m. %H:%M")
+                                        .format("on %d.%m. at %H:%M")
                                 );
                             }
                         }
