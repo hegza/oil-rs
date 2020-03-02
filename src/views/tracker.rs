@@ -225,20 +225,6 @@ impl Tracker {
         ControlAction::Proceed
     }
 
-    fn undo(&mut self) {
-        trace!("Undo starts");
-
-        // No-op if nothing in buffer
-        if self.undo_buffer.is_empty() {
-            debug!("Attempted to undo with empty undo buffer");
-            println!("Cannot undo, undo buffer is empty");
-            return;
-        }
-
-        let undo_op = self.undo_buffer.pop().unwrap();
-        undo_op(self);
-    }
-
     fn visualize(&self, visible_events: &[(&EventUid, &TrackedEvent)]) {
         let now = Local::now();
 
@@ -296,6 +282,20 @@ impl Tracker {
         for cmd in COMMAND_KEYS.iter() {
             println!("{:<10} - {}", cmd.name, cmd.short_desc);
         }
+    }
+
+    fn undo(&mut self) {
+        trace!("Undo starts");
+
+        // No-op if nothing in buffer
+        if self.undo_buffer.is_empty() {
+            debug!("Attempted to undo with empty undo buffer");
+            println!("Cannot undo, undo buffer is empty");
+            return;
+        }
+
+        let undo_op = self.undo_buffer.pop().unwrap();
+        undo_op(self);
     }
 
     /// Returns previous state
