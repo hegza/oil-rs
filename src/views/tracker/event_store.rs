@@ -44,7 +44,7 @@ impl EventStore {
                 let events = serde_yaml::from_str::<EventStore>(&contents);
                 match events {
                     Ok(mut events) => {
-                        events.refresh_state();
+                        events.update_events();
                         Ok(events)
                     }
                     Err(e) => Err(LoadError::FileContentsMalformed(
@@ -95,11 +95,16 @@ impl EventStore {
     }
 
     /// Returns the stored events as an ordered map (inner type)
-    pub fn events(&self) -> &BTreeMap<Uid, TrackedEvent> {
+    #[allow(dead_code)]
+    pub fn events_by_uid(&self) -> &BTreeMap<Uid, TrackedEvent> {
         &self.0
     }
 
-    pub fn refresh_state(&mut self) {
+    pub fn iter(&self) -> impl Iterator<Item = (&Uid, &TrackedEvent)> {
+        self.0.iter()
+    }
+
+    pub fn update_events(&mut self) {
         for tracked_event in self.0.values_mut() {
             tracked_event.update();
         }

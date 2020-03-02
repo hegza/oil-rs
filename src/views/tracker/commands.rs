@@ -1,13 +1,11 @@
 use super::error::CommandError;
 use super::event_store::Uid as EventUid;
-use super::Id as TrackerId;
 use super::{Tracker, ViewState};
 use crate::event::{Event, State};
 use crate::prelude::*;
 use chrono::Local;
 use dialoguer::Confirmation;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 
@@ -177,10 +175,7 @@ impl Deref for CommandKeys {
 }
 
 /// Interpret user action as a command
-pub fn match_command(
-    input: &str,
-    id_to_uid: &BTreeMap<TrackerId, EventUid>,
-) -> Option<CommandKind> {
+pub fn match_command(input: &str, id_to_uid: &[EventUid]) -> Option<CommandKind> {
     // Sanitize
     let input = input.trim();
 
@@ -239,7 +234,7 @@ pub fn match_command(
                         // Try to match a number for "complete command"
                         match first_token.parse::<usize>() {
                             Ok(id) => {
-                                let uid = match id_to_uid.get(&TrackerId(id)) {
+                                let uid = match id_to_uid.get(id) {
                                     Some(uid) => uid,
                                     None => {
                                         println!("No event found for key {}", id);
@@ -524,7 +519,7 @@ impl Apply for RefreshCommand {
     }
 }
 
-fn match_id_interact<'i, I>(input: &'i mut I) -> Option<TrackerId>
+fn match_id_interact<'i, I>(input: &'i mut I) -> Option<usize>
 where
     I: Iterator<Item = &'i str>,
 {
@@ -538,7 +533,7 @@ where
             None
         }
         Some(id) => match id.parse::<usize>() {
-            Ok(id) => Some(TrackerId(id)),
+            Ok(id) => Some(id),
             Err(_) => {
                 println!("Could not parse {} into an id", id);
                 None
@@ -548,10 +543,7 @@ where
 }
 
 /// Returns the mapped UID based on the UI Tracker ID received as input
-fn id_token_to_uid_interact<'i, I>(
-    input: &'i mut I,
-    id_to_uid: &BTreeMap<TrackerId, EventUid>,
-) -> Option<EventUid>
+fn id_token_to_uid_interact<'i, I>(input: &'i mut I, id_to_uid: &[EventUid]) -> Option<EventUid>
 where
     I: Iterator<Item = &'i str>,
 {
@@ -559,7 +551,7 @@ where
         Some(id) => id,
         None => return None,
     };
-    match id_to_uid.get(&id) {
+    match id_to_uid.get(id) {
         Some(uid) => Some(*uid),
         None => {
             println!("No item found for key {}", id);

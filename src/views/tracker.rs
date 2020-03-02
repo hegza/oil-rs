@@ -15,11 +15,18 @@ use dialoguer::{
 };
 pub use error::*;
 use event_store::{EventStore, TrackedEvent, Uid as EventUid};
-use std::collections::BTreeMap;
+use std::cmp::Ordering;
 use std::convert::TryInto;
+use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::string::ToString;
+
+pub struct Tracker {
+    tracked_events: EventStore,
+    state: ViewState,
+    undo_buffer: Vec<Box<dyn FnOnce(&mut Tracker)>>,
+}
 
 #[derive(Clone, Copy)]
 pub enum ViewState {
@@ -27,20 +34,12 @@ pub enum ViewState {
     Extended,
 }
 
-pub struct Tracker {
-    tracked_events: EventStore,
-    id_to_uid: BTreeMap<Id, EventUid>,
-    state: ViewState,
-    undo_buffer: Vec<Box<dyn FnOnce(&mut Tracker)>>,
-}
+pub const LOOK_AHEAD_FRAC: f64 = 1. / 12.;
 
 impl Tracker {
     pub fn with_events(tracked_events: EventStore) -> Tracker {
-        let id_to_uid = make_ids(&tracked_events);
-
         Tracker {
             tracked_events,
-            id_to_uid,
             state: ViewState::Extended,
             undo_buffer: Vec::new(),
         }
@@ -48,7 +47,6 @@ impl Tracker {
     pub fn empty() -> Tracker {
         Tracker {
             tracked_events: EventStore::new(),
-            id_to_uid: BTreeMap::new(),
             state: ViewState::Extended,
             undo_buffer: Vec::new(),
         }
@@ -68,36 +66,77 @@ impl Tracker {
         }
     }
 
+    /// 1. Display tracker, 2. get input (modal), 3. refresh status from disk, 4. apply changes.
     pub fn interact<P>(&mut self, path: P)
     where
         P: AsRef<Path>,
     {
         loop {
-            debug!("Interact loop starts");
-
             // Hint at loop reset
+            debug!("Interact loop starts");
             println!();
 
-            // 0. Display tracker (main UI)
-            trace!("Refreshing tracked events from disk before visualizing");
-            self.tracked_events.refresh_state();
-            debug!("Visualizing tracker (main 0/4)");
-            self.visualize();
+            // Set up cached variables
+            let now = Local::now();
 
-            // 1. Get input from user (main interface)
+            trace!("Refreshing tracked events from disk");
+            self.tracked_events.update_events();
+
+            // List of events, filtered and sorted for ui. Vector index indicates UI ID.
+            trace!("Generating list of events for UI");
+            let events_list: Vec<(&EventUid, &TrackedEvent)> = {
+                let mut events = Vec::from_iter(self.tracked_events.iter());
+                match self.state {
+                    // Extended mode: show all events, sorted by next trigger time
+                    ViewState::Extended => {
+                        events.sort_by(|(_, te1), (_, te2)| sort_by_next_trigger(te1, te2, &now));
+                    }
+                    // Standard mode: show triggered events + lookahead, sorted by next trigger time
+                    ViewState::Standard => {
+                        let mut filtered_events = events
+                            .iter()
+                            .filter(|&(_, event)| match event.state() {
+                                State::Triggered(_) => true,
+                                // Show other entries if their next trigger is within look-ahead scope
+                                _ => match event.fraction_of_interval_remaining(&now) {
+                                    Some(remaining) if remaining < LOOK_AHEAD_FRAC => true,
+                                    _ => false,
+                                },
+                            })
+                            .map(|&x| x)
+                            .collect::<Vec<(&EventUid, &TrackedEvent)>>();
+                        filtered_events
+                            .sort_by(|(_, te1), (_, te2)| sort_by_next_trigger(te1, te2, &now));
+                        events = filtered_events;
+                    }
+                }
+                events
+            };
+
+            // 1. Display tracker (main UI)
+            debug!("Visualizing tracker (main 0/4)");
+            self.visualize(&events_list);
+
+            // 2. Get input from user (main interface)
             debug!("Getting user input (main 1/4)");
             let input = Input::<String>::with_theme(&CustomPromptCharacterTheme::new('>'))
                 .allow_empty(true)
                 .interact()
                 .expect("could not parse string from user input");
-            let cmd = match_command(&input, &self.id_to_uid);
+            let cmd = match_command(
+                &input,
+                &events_list
+                    .iter()
+                    .map(|(&uid, _)| uid)
+                    .collect::<Vec<EventUid>>(),
+            );
 
             // Check for exit
             if let Some(CommandKind::Exit) = cmd {
                 return;
             }
 
-            // 2. Refresh status from disk
+            // 3. Refresh status from disk
             debug!("User input received... refreshing state from disk (main 2/4)");
             match self.refresh_from_disk(&path) {
                 ControlAction::Proceed => {}
@@ -105,7 +144,7 @@ impl Tracker {
                 ControlAction::Input => continue,
             }
 
-            // 3. Attempt to apply command
+            // 4. Attempt to apply command
             debug!("Applying command... (main 3/4)");
             match self.apply_command(cmd) {
                 ControlAction::Proceed => {}
@@ -113,7 +152,7 @@ impl Tracker {
                 ControlAction::Input => continue,
             }
 
-            // 4. Store to disk on success
+            // 5. Store to disk on success
             debug!("Command applied succesfully, storing state to disk (main 4/4)");
             self.store_to_disk(&path);
         }
@@ -140,7 +179,6 @@ impl Tracker {
                 }
             }
         };
-        self.id_to_uid = make_ids(&self.tracked_events);
         ControlAction::Proceed
     }
 
@@ -201,7 +239,7 @@ impl Tracker {
         undo_op(self);
     }
 
-    fn visualize(&self) {
+    fn visualize(&self, visible_events: &[(&EventUid, &TrackedEvent)]) {
         let now = Local::now();
 
         let state_str = match self.state {
@@ -211,27 +249,25 @@ impl Tracker {
 
         // Print status
         println!("=== Events ({}) ===", state_str);
-        for (idx, (_uid, event)) in self.tracked_events.events().iter().enumerate() {
+        for (idx, (_, event)) in visible_events.iter().enumerate() {
             match self.state {
                 ViewState::Standard => match event.state() {
                     // Show triggered entries
                     State::Triggered(_) => {
                         println!("* ({id:>2})   {text}", id = idx, text = event.text());
                     }
-                    // Show other entries if their next trigger is within look-ahead scope
+                    // Show non-triggered with details if requested
                     _ => {
-                        if let Some(remaining) = event.fraction_of_interval_remaining(&now) {
-                            if remaining < (1. / 12.) {
-                                println!(
-                                    "  ({id:>2})   ({text}) - (triggers {time})",
-                                    id = idx,
-                                    text = event.text(),
-                                    time = event
-                                        .next_trigger_time(&now)
-                                        .unwrap()
-                                        .format("on %d.%m. at %H:%M")
-                                );
-                            }
+                        if let Some(_) = event.fraction_of_interval_remaining(&now) {
+                            println!(
+                                "  ({id:>2})   ({text}) - (triggers {time})",
+                                id = idx,
+                                text = event.text(),
+                                time = event
+                                    .next_trigger_time(&now)
+                                    .unwrap()
+                                    .format("on %d.%m. at %H:%M")
+                            );
                         }
                     }
                 },
@@ -241,7 +277,7 @@ impl Tracker {
                         id = idx,
                         text = event.text(),
                         interval = event.event().interval(),
-                        next = match event.next_trigger_time(&now) {
+                        next = match &event.next_trigger_time(&now) {
                             None => "Not scheduled".to_string(),
                             Some(time) => format!("{}", time.format("%a %d.%m. %H:%M")),
                         },
@@ -276,11 +312,8 @@ impl Tracker {
     // Returns None if an event was not found with id
     pub fn remove_event(&mut self, uid: EventUid) -> Option<(Event, State)> {
         match self.tracked_events.remove(uid) {
-            // Found: also remove from ID's and separate the return value
-            Ok(te) => {
-                self.id_to_uid = make_ids(&self.tracked_events);
-                Some((te.event().clone(), te.state().clone()))
-            }
+            // Found: separate the return value
+            Ok(te) => Some((te.event().clone(), te.state().clone())),
             // Not found: return None
             Err(_) => None,
         }
@@ -293,10 +326,7 @@ impl Tracker {
         trace!("Created TrackedEvent: {:?}", &tracked_event);
 
         match self.tracked_events.add(uid, tracked_event) {
-            Ok(()) => {
-                self.id_to_uid = make_ids(&self.tracked_events);
-                uid
-            }
+            Ok(()) => uid,
             Err(ItemAlreadyExistsError(k, ov, _)) => {
                 panic!(
                     "Attempted to register an event with UID {} that was already reserved for: {:#?}", k, ov
@@ -546,23 +576,9 @@ pub fn input_time(prompt: &str) -> Option<chrono::NaiveTime> {
     }
 }
 
-#[derive(Clone, Copy, PartialOrd, Eq, PartialEq, Ord)]
-pub struct Id(pub usize);
-
-impl std::fmt::Display for Id {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-fn make_ids(events: &EventStore) -> BTreeMap<Id, EventUid> {
-    events
-        .events()
-        .iter()
-        .map(|(&uid, _)| uid)
-        .enumerate()
-        .map(|(id, uid)| (Id(id), uid))
-        .collect::<BTreeMap<Id, EventUid>>()
+fn sort_by_next_trigger(te1: &TrackedEvent, te2: &TrackedEvent, now: &LocalTime) -> Ordering {
+    te1.next_trigger_time(&now)
+        .cmp(&te2.next_trigger_time(&now))
 }
 
 pub fn set_up_at(path: PathBuf) -> (Tracker, PathBuf) {
