@@ -259,13 +259,17 @@ impl Tracker {
                 },
                 ViewState::Extended => {
                     println!(
-                        "{trig} ({id:>2}) {next:>16} - {text} ({interval}, current: {state:?})",
+                        "{trig} ({id:>2}) {next} - {text} ({interval}, current: {state:?})",
                         id = idx,
                         text = event.text(),
                         interval = event.event().interval(),
                         next = match &event.next_trigger_time(&now) {
-                            None => "Not scheduled".to_string(),
-                            Some(time) => format!("{}", time.format("%a %d.%m. %H:%M")),
+                            None => format!("{:>16}", "Not scheduled"),
+                            Some(time) => format!(
+                                "{:<10} {:<5}",
+                                time.format("%a %-d.%-m."),
+                                time.format("%H:%M")
+                            ),
                         },
                         state = event.state(),
                         trig = match event.state() {
