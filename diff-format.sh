@@ -19,5 +19,5 @@ done
 IDX=$(($IDX-1))
 CAND=$CAND_ROOT$IDX$CAND_EXT
 echo "diff $CAND $SOURCE"
-diff $CAND $SOURCE
+diff --color $CAND $SOURCE
 
