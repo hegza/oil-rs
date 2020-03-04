@@ -1,6 +1,6 @@
 use crate::prelude::*;
-use chrono::{Duration, Local, NaiveTime as Time, Weekday};
-use serde::{Deserialize, Serialize};
+use chrono::{Duration, Local, NaiveTime as Time, Timelike, Weekday};
+use serde::{Deserialize, Serialize, Serializer};
 use std::default::Default;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -147,7 +147,7 @@ impl std::fmt::Display for MonthlyDay {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub enum State {
     // Never before triggered or completed, .0 is time registered
     Dormant(LocalTime),
@@ -155,6 +155,39 @@ pub enum State {
     Triggered(Vec<LocalTime>),
     // Completed and ready to trigger again
     Completed(LocalTime),
+}
+
+// Implement a custom serializer with lower precision timestamps, note that the full timestamp must
+// exist in runtime, but the serialized format can do with second precision.
+impl Serialize for State {
+    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            State::Dormant(ref time) => s.serialize_newtype_variant(
+                "State",
+                0,
+                "Dormant",
+                &time.with_nanosecond(0).unwrap_or(time.clone()),
+            ),
+            State::Triggered(ref times) => s.serialize_newtype_variant(
+                "State",
+                0,
+                "Triggered",
+                &times
+                    .iter()
+                    .map(|time| time.with_nanosecond(0).unwrap_or(time.clone()))
+                    .collect::<Vec<LocalTime>>(),
+            ),
+            State::Completed(ref time) => s.serialize_newtype_variant(
+                "State",
+                0,
+                "Completed",
+                &time.with_nanosecond(0).unwrap_or(time.clone()),
+            ),
+        }
+    }
 }
 
 impl Default for State {
