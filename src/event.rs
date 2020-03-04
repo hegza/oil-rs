@@ -94,7 +94,7 @@ impl std::fmt::Display for Interval {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum TimeDelta {
     Days(i64),
-    Hms(i64, i64, i64),
+    Hm(i64, i64),
 }
 
 impl std::fmt::Display for TimeDelta {
@@ -103,7 +103,7 @@ impl std::fmt::Display for TimeDelta {
         match self {
             Days(n) => write!(f, "{} days", n),
             // TODO: could leave out units for zero inputs
-            Hms(h, m, s) => write!(f, "{}h{}m{}s", h, m, s),
+            Hm(h, m) => write!(f, "{}h{}m", h, m),
         }
     }
 }
@@ -115,11 +115,7 @@ impl TimeDelta {
     pub fn to_duration(&self) -> Duration {
         match self {
             TimeDelta::Days(d) => Duration::days(*d),
-            TimeDelta::Hms(h, m, s) => {
-                Duration::hours(*h as i64)
-                    + Duration::minutes(*m as i64)
-                    + Duration::seconds(*s as i64)
-            }
+            TimeDelta::Hm(h, m) => Duration::hours(*h as i64) + Duration::minutes(*m as i64),
         }
     }
 }

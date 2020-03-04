@@ -513,10 +513,9 @@ pub fn create_timedelta() -> Option<crate::event::TimeDelta> {
             let time = input_time("Input a time interval, eg. 2:15 for 2 hours 15 minutes");
             match time {
                 None => return None,
-                Some(t) => Some(crate::event::TimeDelta::Hms(
+                Some(t) => Some(crate::event::TimeDelta::Hm(
                     t.hour().try_into().unwrap(),
                     t.minute().try_into().unwrap(),
-                    t.second().try_into().unwrap(),
                 )),
             }
         }
