@@ -169,12 +169,14 @@ impl Serialize for State {
                 "State",
                 0,
                 "Dormant",
+                // Time with truncated nanoseconds
                 &time.with_nanosecond(0).unwrap_or(time.clone()),
             ),
             State::Triggered(ref times) => s.serialize_newtype_variant(
                 "State",
                 0,
                 "Triggered",
+                // Time with truncated nanoseconds
                 &times
                     .iter()
                     .map(|time| time.with_nanosecond(0).unwrap_or(time.clone()))
@@ -184,6 +186,7 @@ impl Serialize for State {
                 "State",
                 0,
                 "Completed",
+                // Time with truncated nanoseconds
                 &time.with_nanosecond(0).unwrap_or(time.clone()),
             ),
         }
