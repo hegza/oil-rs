@@ -491,8 +491,8 @@ pub fn create_timedelta() -> Option<crate::event::TimeDelta> {
     let choices = &[
         // "Days(i32)"
         "Trigger every N days",
-        // "Hms { hours: i32, minutes: i32, seconds: i32 }"
-        "Trigger every 'hours, minutes, seconds'",
+        // "Hm { hours: i32, minutes: i32 }"
+        "Trigger every h:mm hours and minutes",
     ];
 
     let selection = Select::with_theme(&ColorfulTheme::default())
