@@ -102,9 +102,34 @@ impl std::fmt::Display for TimeDelta {
         use TimeDelta::*;
         match self {
             Days(n) => write!(f, "{} days", n),
-            // TODO: could leave out units for zero inputs
-            Hm(h, m) => write!(f, "{}h{}m", h, m),
+            Hm(h, m) => {
+                match h {
+                    0 => write!(f, ""),
+                    h => write!(f, "{}h", h),
+                }?;
+                match m {
+                    0 => write!(f, ""),
+                    m => write!(f, "{}m", m),
+                }
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn hours_minutes_formats_right() {
+        let dt = TimeDelta::Hm(1, 20);
+        assert_eq!(&format!("{}", dt), "1h20m");
+
+        let dt = TimeDelta::Hm(0, 15);
+        assert_eq!(&format!("{}", dt), "15m");
+
+        let dt = TimeDelta::Hm(5, 0);
+        assert_eq!(&format!("{}", dt), "5h");
     }
 }
 
