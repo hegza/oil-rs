@@ -6,8 +6,8 @@ mod tests;
 
 use crate::event::{AnnualDay, Event, Interval, State};
 use crate::prelude::*;
-use crate::views::tracker::commands::COMMAND_KEYS;
-use chrono::{Local, Timelike, Weekday};
+use crate::views::tracker::commands::{Apply, CommandReceiver, FnApply, COMMAND_KEYS};
+use chrono::{DateTime, Local, Timelike, Weekday};
 use commands::{match_command, CommandKind, CreateCommand};
 use dialoguer::{
     theme::{ColorfulTheme, CustomPromptCharacterTheme},
@@ -22,47 +22,16 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::string::ToString;
 
-pub struct Tracker {
-    tracked_events: EventStore,
+pub struct TrackerCli {
     state: ViewState,
-    undo_buffer: Vec<Box<dyn FnOnce(&mut Tracker)>>,
+    tracker: Tracker,
 }
 
-#[derive(Clone, Copy)]
-pub enum ViewState {
-    Standard,
-    Extended,
-}
-
-pub const LOOK_AHEAD_FRAC: f64 = 1. / 12.;
-
-impl Tracker {
-    pub fn with_events(tracked_events: EventStore) -> Tracker {
-        Tracker {
-            tracked_events,
+impl TrackerCli {
+    pub fn new(tracker: Tracker) -> TrackerCli {
+        TrackerCli {
             state: ViewState::Extended,
-            undo_buffer: Vec::new(),
-        }
-    }
-    pub fn empty() -> Tracker {
-        Tracker {
-            tracked_events: EventStore::new(),
-            state: ViewState::Extended,
-            undo_buffer: Vec::new(),
-        }
-    }
-    pub fn from_path<P>(path: P) -> Result<Tracker, LoadError>
-    where
-        P: AsRef<Path>,
-    {
-        debug!(
-            "Reading events for tracker from path: {}",
-            path.as_ref().to_string_lossy()
-        );
-        let events = EventStore::from_file(path);
-        match events {
-            Ok(events) => Ok(Tracker::with_events(events)),
-            Err(e) => Err(e),
+            tracker,
         }
     }
 
@@ -80,45 +49,18 @@ impl Tracker {
             let now = Local::now();
 
             trace!("Refreshing tracked events from disk");
-            self.tracked_events.update_events();
+            self.tracker.update_events_from_disk();
 
             // List of events, filtered and sorted for ui. Vector index indicates UI ID.
             trace!("Generating list of events for UI");
-            let events_list: Vec<(&EventUid, &TrackedEvent)> = {
-                let mut events = Vec::from_iter(self.tracked_events.iter());
-                match self.state {
-                    // Extended mode: show all events, sorted by next trigger time
-                    ViewState::Extended => {
-                        events.sort_by(|(_, te1), (_, te2)| sort_by_next_trigger(te1, te2, &now));
-                    }
-                    // Standard mode: show triggered events + lookahead, sorted by next trigger time
-                    ViewState::Standard => {
-                        let mut filtered_events = events
-                            .iter()
-                            .filter(|&(_, event)| match event.state() {
-                                State::Triggered(_) => true,
-                                // Show other entries if their next trigger is within look-ahead scope
-                                _ => match event.fraction_of_interval_remaining(&now) {
-                                    Some(remaining) if remaining < LOOK_AHEAD_FRAC => true,
-                                    _ => false,
-                                },
-                            })
-                            .map(|&x| x)
-                            .collect::<Vec<(&EventUid, &TrackedEvent)>>();
-                        filtered_events
-                            .sort_by(|(_, te1), (_, te2)| sort_by_next_trigger(te1, te2, &now));
-                        events = filtered_events;
-                    }
-                }
-                events
-            };
+            let events_list = self.generate_events_list(&now);
 
             // 1. Display tracker (main UI)
-            debug!("Visualizing tracker (main 0/4)");
+            debug!("Visualizing tracker (main 1/5)");
             self.visualize(&events_list);
 
             // 2. Get input from user (main interface)
-            debug!("Getting user input (main 1/4)");
+            debug!("Getting user input (main 2/5)");
             let input = Input::<String>::with_theme(&CustomPromptCharacterTheme::new('>'))
                 .allow_empty(true)
                 .interact()
@@ -127,7 +69,7 @@ impl Tracker {
                 &input,
                 &events_list
                     .iter()
-                    .map(|(&uid, _)| uid)
+                    .map(|(uid, _)| *uid)
                     .collect::<Vec<EventUid>>(),
             );
 
@@ -137,15 +79,15 @@ impl Tracker {
             }
 
             // 3. Refresh status from disk
-            debug!("User input received... refreshing state from disk (main 2/4)");
-            match self.refresh_from_disk(&path) {
+            debug!("User input received... refreshing state from disk before applying (main 3/5)");
+            match self.refresh_tracker_from_disk(&path) {
                 ControlAction::Proceed => {}
                 ControlAction::Exit => return,
                 ControlAction::Input => continue,
             }
 
             // 4. Attempt to apply command
-            debug!("Applying command... (main 3/4)");
+            debug!("Applying command... (main 4/5)");
             match self.apply_command(cmd) {
                 ControlAction::Proceed => {}
                 ControlAction::Exit => return,
@@ -153,48 +95,8 @@ impl Tracker {
             }
 
             // 5. Store to disk on success
-            debug!("Command applied succesfully, storing state to disk (main 4/4)");
-            self.store_to_disk(&path);
-        }
-    }
-
-    fn refresh_from_disk<P>(&mut self, path: P) -> ControlAction
-    where
-        P: AsRef<Path>,
-    {
-        self.tracked_events = match EventStore::from_file(&path) {
-            Ok(ev) => ev,
-            Err(e) => {
-                warn!("Could not refresh events from disk: {:?}", e);
-                let text = &format!(
-                "Could not refresh event status from disk before attempting to apply command:\n{:#?}",
-                &e
-            );
-                let choices = ["Cancel"];
-                match crate::views::troubleshoot::choices(text, &choices) {
-                    0 => {
-                        return ControlAction::Input;
-                    }
-                    _ => unreachable!(),
-                }
-            }
-        };
-        ControlAction::Proceed
-    }
-
-    pub fn store_to_disk<P>(&self, path: P)
-    where
-        P: AsRef<Path>,
-    {
-        match self.tracked_events.to_file(&path) {
-            Ok(()) => {}
-            Err(_) => {
-                Confirmation::new()
-                    .with_text("Failed to write to disk. Last operation will be cancelled.")
-                    .show_default(false)
-                    .interact()
-                    .unwrap();
-            }
+            debug!("Command applied succesfully, storing state to disk (main 5/5)");
+            self.tracker.store_to_disk(&path);
         }
     }
 
@@ -209,23 +111,64 @@ impl Tracker {
         use commands::*;
         match cmd {
             CommandKind::Exit => return ControlAction::Exit,
-            CommandKind::Undo => self.undo(),
-            CommandKind::ReversibleCommand(cmd) => {
-                let undo_op = match cmd.apply(self) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        println!("Apply failed: {}", e.to_string());
-                        // Go back to input phase
-                        return ControlAction::Input;
-                    }
-                };
-                self.undo_buffer.push(undo_op);
-            }
+            CommandKind::CliCommand(cmd) => self.apply(cmd),
+            CommandKind::Undo => self.tracker.undo(),
+            CommandKind::DataCommand(cmd) => match self.tracker.apply_command(&*cmd) {
+                Ok(()) => {}
+                Err(e) => {
+                    println!("Apply failed: {}", e.to_string());
+                    // Go back to input phase
+                    return ControlAction::Input;
+                }
+            },
         }
         ControlAction::Proceed
     }
 
-    fn visualize(&self, visible_events: &[(&EventUid, &TrackedEvent)]) {
+    fn apply(&mut self, cmd: Box<dyn Apply>) {
+        let result = cmd.apply(CommandReceiver::TrackerCli(self));
+        match result {
+            Ok(apply) => {
+                if let Some(_) = apply {
+                    warn!("Apply::apply returned an undo callback, but undo is not implemented for TrackerCli");
+                }
+            }
+            Err(err) => {
+                println!("Could not apply command: {}", err);
+            }
+        }
+    }
+
+    fn generate_events_list(&self, now: &DateTime<Local>) -> Vec<(EventUid, &TrackedEvent)> {
+        let mut events = self.tracker.events();
+        // Sort
+        match self.state {
+            // Extended mode: show all events, sorted by next trigger time
+            ViewState::Extended => {
+                events.sort_by(|(_, te1), (_, te2)| sort_by_next_trigger(te1, te2, &now));
+            }
+            // Standard mode: show triggered events + lookahead, sorted by next trigger time
+            ViewState::Standard => {
+                let mut filtered_events = events
+                    .iter()
+                    .filter(|&(_, event)| match event.state() {
+                        State::Triggered(_) => true,
+                        // Show other entries if their next trigger is within look-ahead scope
+                        _ => match event.fraction_of_interval_remaining(&now) {
+                            Some(remaining) if remaining < LOOK_AHEAD_FRAC => true,
+                            _ => false,
+                        },
+                    })
+                    .map(|&x| x)
+                    .collect::<Vec<(EventUid, &TrackedEvent)>>();
+                filtered_events.sort_by(|(_, te1), (_, te2)| sort_by_next_trigger(te1, te2, &now));
+                events = filtered_events;
+            }
+        }
+        events
+    }
+
+    fn visualize(&self, visible_events: &[(EventUid, &TrackedEvent)]) {
         let now = Local::now();
 
         let state_str = match self.state {
@@ -288,7 +231,127 @@ impl Tracker {
         }
     }
 
-    fn undo(&mut self) {
+    fn refresh_tracker_from_disk<P>(&mut self, path: P) -> ControlAction
+    where
+        P: AsRef<Path>,
+    {
+        match self.tracker.refresh_from_disk(&path) {
+            Ok(()) => ControlAction::Proceed,
+            Err(e) => {
+                let text = &format!(
+                    "Could not refresh event status from disk before attempting to apply command:\n{:#?}",
+                    &e
+                );
+                let choices = ["Cancel"];
+                match crate::views::troubleshoot::choices(text, &choices) {
+                    0 => {
+                        return ControlAction::Input;
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+
+    /// Returns previous state
+    pub fn set_state(&mut self, s: ViewState) -> ViewState {
+        let prev = self.state;
+        self.state = s;
+        prev
+    }
+}
+
+pub struct Tracker {
+    tracked_events: EventStore,
+    undo_buffer: Vec<FnApply>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ViewState {
+    Standard,
+    Extended,
+}
+
+pub const LOOK_AHEAD_FRAC: f64 = 1. / 12.;
+
+impl Tracker {
+    pub fn with_events(tracked_events: EventStore) -> Tracker {
+        Tracker {
+            tracked_events,
+            undo_buffer: Vec::new(),
+        }
+    }
+    pub fn empty() -> Tracker {
+        Tracker {
+            tracked_events: EventStore::new(),
+            undo_buffer: Vec::new(),
+        }
+    }
+    pub fn from_path<P>(path: P) -> Result<Tracker, LoadError>
+    where
+        P: AsRef<Path>,
+    {
+        debug!(
+            "Reading events for tracker from path: {}",
+            path.as_ref().to_string_lossy()
+        );
+        let events = EventStore::from_file(path);
+        match events {
+            Ok(events) => Ok(Tracker::with_events(events)),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn update_events_from_disk(&mut self) {
+        self.tracked_events.update_events();
+    }
+    pub fn refresh_from_disk<P>(&mut self, path: P) -> Result<(), LoadError>
+    where
+        P: AsRef<Path>,
+    {
+        self.tracked_events = match EventStore::from_file(&path) {
+            Ok(ev) => ev,
+            Err(e) => {
+                warn!("Could not refresh events from disk: {:?}", e);
+                return Err(e);
+            }
+        };
+        Ok(())
+    }
+    pub fn store_to_disk<P>(&self, path: P)
+    where
+        P: AsRef<Path>,
+    {
+        match self.tracked_events.to_file(&path) {
+            Ok(()) => {}
+            Err(_) => {
+                Confirmation::new()
+                    .with_text("Failed to write to disk. Last operation will be cancelled.")
+                    .show_default(false)
+                    .interact()
+                    .unwrap();
+            }
+        }
+    }
+
+    pub fn apply_command(&mut self, cmd: &dyn Apply) -> Result<(), CommandError> {
+        let undo_op = match cmd.apply(CommandReceiver::Tracker(self)) {
+            Ok(f) => f,
+            Err(e) => {
+                return Err(e);
+            }
+        };
+        if let Some(apply) = undo_op {
+            self.undo_buffer.push(Box::new(apply));
+        }
+        Ok(())
+    }
+
+    pub fn events(&self) -> Vec<(EventUid, &TrackedEvent)> {
+        Vec::from_iter(self.tracked_events.iter().map(|(uid, ev)| (*uid, ev)))
+    }
+
+    pub fn undo(&mut self) {
         trace!("Undo starts");
 
         // No-op if nothing in buffer
@@ -300,13 +363,6 @@ impl Tracker {
 
         let undo_op = self.undo_buffer.pop().unwrap();
         undo_op(self);
-    }
-
-    /// Returns previous state
-    pub fn set_state(&mut self, s: ViewState) -> ViewState {
-        let prev = self.state;
-        self.state = s;
-        prev
     }
 
     pub fn add_event(&mut self, event: Event) -> EventUid {
@@ -340,7 +396,6 @@ impl Tracker {
     }
 
     /// Returns the event as mutable if it exists with given UID
-    #[allow(dead_code)]
     pub fn get_event_mut(&mut self, uid: EventUid) -> Option<&mut TrackedEvent> {
         self.tracked_events.get_mut(uid).ok()
     }

@@ -6,6 +6,7 @@ use std::fmt::{Debug, Display, Formatter};
 #[derive(Debug, Clone)]
 pub enum CommandError {
     EventNotFound(EventUid),
+    InvalidReceiver(String),
 }
 
 #[derive(Debug)]

@@ -1,6 +1,6 @@
 use super::error::CommandError;
 use super::event_store::Uid as EventUid;
-use super::{Tracker, ViewState};
+use super::{Tracker, TrackerCli, ViewState};
 use crate::event::{Event, State};
 use crate::prelude::*;
 use chrono::Local;
@@ -11,7 +11,8 @@ use std::ops::Deref;
 
 #[derive(Debug)]
 pub enum CommandKind {
-    ReversibleCommand(Box<dyn Apply>),
+    CliCommand(Box<dyn Apply>),
+    DataCommand(Box<dyn Apply>),
     Undo,
     Exit,
 }
@@ -187,7 +188,7 @@ pub fn match_command(input: &str, id_to_uid: &[EventUid]) -> Option<CommandKind>
     // No tokens? Early out
     if tokens.clone().count() == 0 {
         // Refresh by default
-        return Some(ReversibleCommand(Box::new(RefreshCommand)));
+        return Some(DataCommand(Box::new(RefreshCommand)));
     }
 
     // Try to match a command from the first token
@@ -201,11 +202,11 @@ pub fn match_command(input: &str, id_to_uid: &[EventUid]) -> Option<CommandKind>
                             Some(cmd) => cmd,
                             None => return None,
                         };
-                        Some(ReversibleCommand(Box::new(cmd)))
+                        Some(DataCommand(Box::new(cmd)))
                     }
                     // Rm removes an event with id
                     CommandInput::Remove => id_token_to_uid_interact(&mut tokens, id_to_uid)
-                        .map(|uid| ReversibleCommand(Box::new(RemoveCommand(uid)))),
+                        .map(|uid| DataCommand(Box::new(RemoveCommand(uid)))),
                     CommandInput::Alter => {
                         // Resolve uid first, and early out if not found
                         let uid = match id_token_to_uid_interact(&mut tokens, id_to_uid) {
@@ -219,12 +220,12 @@ pub fn match_command(input: &str, id_to_uid: &[EventUid]) -> Option<CommandKind>
                             Some(cmd) => AlterCommand(uid, cmd.0),
                             None => return None,
                         };
-                        Some(ReversibleCommand(Box::new(cmd)))
+                        Some(DataCommand(Box::new(cmd)))
                     }
                     CommandInput::Trigger => id_token_to_uid_interact(&mut tokens, id_to_uid)
-                        .map(|uid| ReversibleCommand(Box::new(TriggerCommand(uid)))),
-                    CommandInput::Show => Some(ReversibleCommand(Box::new(ShowCommand))),
-                    CommandInput::Hide => Some(ReversibleCommand(Box::new(HideCommand))),
+                        .map(|uid| DataCommand(Box::new(TriggerCommand(uid)))),
+                    CommandInput::Show => Some(CliCommand(Box::new(ShowCommand))),
+                    CommandInput::Hide => Some(CliCommand(Box::new(HideCommand))),
                     CommandInput::Undo => Some(Undo),
                     // Exit the program
                     CommandInput::Exit => Some(Exit),
@@ -242,7 +243,7 @@ pub fn match_command(input: &str, id_to_uid: &[EventUid]) -> Option<CommandKind>
                                     }
                                 };
 
-                                Some(ReversibleCommand(Box::new(CompleteCommand(*uid))))
+                                Some(DataCommand(Box::new(CompleteCommand(*uid))))
                             }
 
                             // Nothing was matched, return None
@@ -267,8 +268,26 @@ pub fn match_command(input: &str, id_to_uid: &[EventUid]) -> Option<CommandKind>
     }
 }
 
+pub enum CommandReceiver<'t> {
+    Tracker(&'t mut Tracker),
+    TrackerCli(&'t mut TrackerCli),
+}
+
+impl std::fmt::Debug for CommandReceiver<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use CommandReceiver::*;
+        match self {
+            Tracker(_) => write!(f, "CommandReceiver::Tracker"),
+            TrackerCli(_) => write!(f, "CommandReceiver::TrackerCli"),
+        }
+    }
+}
+
+pub type FnApply = Box<dyn FnOnce(&mut Tracker)>;
+pub type CommandResult = Result<Option<FnApply>, CommandError>;
+
 pub trait Apply: Display + std::fmt::Debug {
-    fn apply(&self, tracker: &mut Tracker) -> Result<Box<dyn FnOnce(&mut Tracker)>, CommandError>;
+    fn apply(&self, target: CommandReceiver) -> CommandResult;
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
@@ -303,9 +322,9 @@ macro_rules! gen_type(
 );
 
 macro_rules! impl_cmd_body{
-    ($Cmd:ident, $sel:ident, $tracker:ident, $apply:block) => {
+    ($Cmd:ident, $sel:ident, $target:ident, $apply:block) => {
         impl Apply for $Cmd {
-            fn apply(&$sel, $tracker: &mut Tracker) -> Result<Box<dyn FnOnce(&mut Tracker)>, CommandError> $apply
+            fn apply(& $sel, $target: CommandReceiver) -> CommandResult $apply
         }
 
         impl Display for $Cmd {
@@ -319,13 +338,13 @@ macro_rules! impl_cmd_body{
 
 // Define command general implementations
 macro_rules! impl_cmd(
-    ( $(#[$attr:meta])* $Cmd:ident($( $type:ty ),*), |$sel:ident, $tracker:ident| $apply:block ) => {
+    ( $(#[$attr:meta])* $Cmd:ident($( $type:ty ),*), |$sel:ident, $target:ident| $apply:block ) => {
         gen_type!($(#[$attr])* $Cmd($($type),*));
-        impl_cmd_body!($Cmd, $sel, $tracker, $apply);
+        impl_cmd_body!($Cmd, $sel, $target, $apply);
     };
-    ( $(#[$attr:meta])* $Cmd:ident, |$sel:ident, $tracker:ident| $apply:block ) => {
+    ( $(#[$attr:meta])* $Cmd:ident, |$sel:ident, $target:ident| $apply:block ) => {
         gen_type!($(#[$attr])* $Cmd);
-        impl_cmd_body!($Cmd, $sel, $tracker, $apply);
+        impl_cmd_body!($Cmd, $sel, $target, $apply);
     };
 );
 
@@ -333,75 +352,95 @@ impl_cmd!(
     /// CreateCommand creates the given event with a UID
     /// Undo will remove the event with the UID
     CreateCommand(Event),
-    |self, tracker| {
-        let event = self.0.clone();
+    |self, target| {
+        match target {
+            CommandReceiver::Tracker(tracker) => {
+                let event = self.0.clone();
 
-        // Op
-        let uid = tracker.add_event(event);
+                // Op
+                let uid = tracker.add_event(event);
 
-        // Undo
-        Ok(Box::new(move |tracker| {
-            tracker.remove_event(uid);
-        }))
+                // Undo
+                Ok(Some(Box::new(move |tracker: &mut Tracker| {
+                    tracker.remove_event(uid);
+                })))
+            }
+            target => Err(CommandError::InvalidReceiver(format!("{:?}", target))),
+        }
     }
 );
 
-impl_cmd!(AlterCommand(EventUid, Event), |self, tracker| {
-    let old_uid = self.0;
+impl_cmd!(AlterCommand(EventUid, Event), |self, target| {
+    match target {
+        CommandReceiver::Tracker(tracker) => {
+            let old_uid = self.0;
 
-    // Op
-    // Perform a replacement
-    let new_event = &self.1;
-    let old_event = match tracker.remove_event(old_uid) {
-        None => {
-            warn!("AlterCommand failed because the event being altered did not exist");
-            return Err(CommandError::EventNotFound(old_uid));
+            // Op
+            // Perform a replacement
+            let new_event = &self.1;
+            let old_event = match tracker.remove_event(old_uid) {
+                None => {
+                    warn!("AlterCommand failed because the event being altered did not exist");
+                    return Err(CommandError::EventNotFound(old_uid));
+                }
+                Some(e) => e,
+            };
+            let new_uid = tracker.add_event_with_state(new_event.clone(), old_event.1.clone());
+
+            // Undo
+            Ok(Some(Box::new(move |tracker: &mut Tracker| {
+                tracker.remove_event(new_uid);
+                tracker.add_event_with_state(old_event.0, old_event.1);
+            })))
         }
-        Some(e) => e,
-    };
-    let new_uid = tracker.add_event_with_state(new_event.clone(), old_event.1.clone());
-
-    // Undo
-    Ok(Box::new(move |tracker| {
-        tracker.remove_event(new_uid);
-        tracker.add_event_with_state(old_event.0, old_event.1);
-    }))
+        CommandReceiver::TrackerCli(_) => {
+            Err(CommandError::InvalidReceiver(format!("{:?}", target)))
+        }
+    }
 });
 
-impl_cmd!(TriggerCommand(EventUid), |self, tracker| {
-    let uid = self.0;
+impl_cmd!(TriggerCommand(EventUid), |self, target| {
+    match target {
+        CommandReceiver::Tracker(tracker) => {
+            let uid = self.0;
 
-    // Op
-    let old_state = match tracker.get_event_state_mut(uid) {
-        None => {
-            warn!("TriggerCommand failed because the event being triggered did not exist");
-            return Err(CommandError::EventNotFound(uid));
-        }
-        Some(state) => {
-            let old_state = state.clone();
-            state.trigger_now(Local::now());
-            old_state
-        }
-    };
+            // Op
+            let old_state = match tracker.get_event_state_mut(uid) {
+                None => {
+                    warn!("TriggerCommand failed because the event being triggered did not exist");
+                    return Err(CommandError::EventNotFound(uid));
+                }
+                Some(state) => {
+                    let old_state = state.clone();
+                    state.trigger_now(Local::now());
+                    old_state
+                }
+            };
 
-    // Undo
-    Ok(Box::new(move |tracker| {
-        match tracker.get_event_state_mut(uid) {
-            None => warn!(
-                "Undo failed for TriggerCommand with uid {} because uid did not exist",
-                uid
-            ),
-            Some(state) => {
-                *state = old_state;
-            }
+            // Undo
+            Ok(Some(Box::new(move |tracker: &mut Tracker| {
+                match tracker.get_event_state_mut(uid) {
+                    None => warn!(
+                        "Undo failed for TriggerCommand with uid {} because uid did not exist",
+                        uid
+                    ),
+                    Some(state) => {
+                        *state = old_state;
+                    }
+                }
+            })))
         }
-    }))
+        CommandReceiver::TrackerCli(_) => {
+            Err(CommandError::InvalidReceiver(format!("{:?}", target)))
+        }
+    }
 });
 
 impl Display for CommandKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            CommandKind::ReversibleCommand(apply) => write!(f, "{}", apply),
+            CommandKind::CliCommand(apply) => write!(f, "{}", apply),
+            CommandKind::DataCommand(apply) => write!(f, "{}", apply),
             CommandKind::Undo => write!(f, "{}", "cmd-undo"),
             CommandKind::Exit => write!(f, "{}", "cmd-exit"),
         }
@@ -416,25 +455,32 @@ impl Display for RemoveCommand {
 }
 
 impl Apply for RemoveCommand {
-    fn apply(&self, tracker: &mut Tracker) -> Result<Box<dyn FnOnce(&mut Tracker)>, CommandError> {
-        let uid = self.0;
+    fn apply(&self, target: CommandReceiver) -> CommandResult {
+        match target {
+            CommandReceiver::Tracker(tracker) => {
+                let uid = self.0;
 
-        // Op
-        let (event, state) = match tracker.remove_event(uid) {
-            None => {
-                warn!(
-                    "Tried to unregister a non-existing event with unique-uid {} -> no-op",
-                    uid
-                );
-                return Err(CommandError::EventNotFound(uid));
+                // Op
+                let (event, state) = match tracker.remove_event(uid) {
+                    None => {
+                        warn!(
+                            "Tried to unregister a non-existing event with unique-uid {} -> no-op",
+                            uid
+                        );
+                        return Err(CommandError::EventNotFound(uid));
+                    }
+                    Some(x) => x,
+                };
+
+                // Undo
+                Ok(Some(Box::new(move |tracker| {
+                    tracker.add_event_with_state(event, state);
+                })))
             }
-            Some(x) => x,
-        };
-
-        // Undo
-        Ok(Box::new(move |tracker| {
-            tracker.add_event_with_state(event, state);
-        }))
+            CommandReceiver::TrackerCli(_) => {
+                Err(CommandError::InvalidReceiver(format!("{:?}", target)))
+            }
+        }
     }
 }
 
@@ -446,31 +492,38 @@ impl Display for CompleteCommand {
 }
 
 impl Apply for CompleteCommand {
-    fn apply(&self, tracker: &mut Tracker) -> Result<Box<dyn FnOnce(&mut Tracker)>, CommandError> {
-        let uid = self.0;
+    fn apply(&self, target: CommandReceiver) -> CommandResult {
+        match target {
+            CommandReceiver::Tracker(tracker) => {
+                let uid = self.0;
 
-        // Op
-        let old_state = match tracker.get_event_state_mut(uid) {
-            Some(state) => {
-                let old_state = state.clone();
-                *state = State::Completed(Local::now());
-                old_state
-            }
-            None => return Err(CommandError::EventNotFound(uid)),
-        };
+                // Op
+                let old_state = match tracker.get_event_state_mut(uid) {
+                    Some(state) => {
+                        let old_state = state.clone();
+                        *state = State::Completed(Local::now());
+                        old_state
+                    }
+                    None => return Err(CommandError::EventNotFound(uid)),
+                };
 
-        // Undo
-        Ok(Box::new(move |tracker| {
-            match tracker.get_event_state_mut(uid) {
-                None => warn!(
-                    "Undo failed for CompleteCommand with uid {} because uid did not exist",
-                    uid
-                ),
-                Some(state) => {
-                    *state = old_state;
-                }
+                // Undo
+                Ok(Some(Box::new(move |tracker| {
+                    match tracker.get_event_state_mut(uid) {
+                        None => warn!(
+                            "Undo failed for CompleteCommand with uid {} because uid did not exist",
+                            uid
+                        ),
+                        Some(state) => {
+                            *state = old_state;
+                        }
+                    }
+                })))
             }
-        }))
+            CommandReceiver::TrackerCli(_) => {
+                Err(CommandError::InvalidReceiver(format!("{:?}", target)))
+            }
+        }
     }
 }
 
@@ -481,11 +534,16 @@ impl Display for ShowCommand {
 }
 
 impl Apply for ShowCommand {
-    fn apply(&self, tracker: &mut Tracker) -> Result<Box<dyn FnOnce(&mut Tracker)>, CommandError> {
-        let prev = tracker.set_state(ViewState::Extended);
-        Ok(Box::new(move |tracker| {
-            tracker.set_state(prev);
-        }))
+    fn apply(&self, target: CommandReceiver) -> CommandResult {
+        match target {
+            CommandReceiver::TrackerCli(cli) => {
+                cli.set_state(ViewState::Extended);
+                Ok(None)
+            }
+            CommandReceiver::Tracker(_) => {
+                Err(CommandError::InvalidReceiver(format!("{:?}", target)))
+            }
+        }
     }
 }
 
@@ -496,11 +554,16 @@ impl Display for HideCommand {
 }
 
 impl Apply for HideCommand {
-    fn apply(&self, tracker: &mut Tracker) -> Result<Box<dyn FnOnce(&mut Tracker)>, CommandError> {
-        let prev = tracker.set_state(ViewState::Standard);
-        Ok(Box::new(move |tracker| {
-            tracker.set_state(prev);
-        }))
+    fn apply(&self, target: CommandReceiver) -> CommandResult {
+        match target {
+            CommandReceiver::Tracker(_) => {
+                Err(CommandError::InvalidReceiver(format!("{:?}", target)))
+            }
+            CommandReceiver::TrackerCli(cli) => {
+                cli.set_state(ViewState::Standard);
+                Ok(None)
+            }
+        }
     }
 }
 
@@ -511,11 +574,11 @@ impl Display for RefreshCommand {
 }
 
 impl Apply for RefreshCommand {
-    fn apply(&self, _tracker: &mut Tracker) -> Result<Box<dyn FnOnce(&mut Tracker)>, CommandError> {
+    fn apply(&self, _target: CommandReceiver) -> CommandResult {
         // Op: no-op
 
         // Undo: no-op
-        Ok(Box::new(move |_| {}))
+        Ok(Some(Box::new(move |_| {})))
     }
 }
 

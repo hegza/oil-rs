@@ -7,6 +7,7 @@ use config::Config;
 use prelude::*;
 use simplelog::Config as LogConfig;
 use simplelog::*;
+use views::tracker::TrackerCli;
 
 const DEFAULT_CONFIG_NAME: &str = "oil.yaml";
 
@@ -40,7 +41,7 @@ fn main() {
     };
 
     // Set up the tracker or prompt the user for one
-    let (mut tracker, path) = match last_path {
+    let (tracker, path) = match last_path {
         // Store the tracker file as the last used one and return
         None => {
             info!("No 'last opened' in config, asking user for a tracker file");
@@ -66,5 +67,6 @@ fn main() {
     };
 
     info!("User starts interaction with tracker");
-    tracker.interact(&path);
+    let mut gui = TrackerCli::new(tracker);
+    gui.interact(&path);
 }

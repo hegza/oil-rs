@@ -11,7 +11,7 @@ use std::io::{Read, Write};
 use std::path::Path;
 pub use tracked_event::TrackedEvent;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]
 pub struct EventStore(BTreeMap<Uid, TrackedEvent>);
 
