@@ -65,6 +65,7 @@ impl TrackerCli {
                 .allow_empty(true)
                 .interact()
                 .expect("could not parse string from user input");
+            debug!("User input: '{}'", &input);
             let cmd = match_command(
                 &input,
                 &events_list
@@ -72,6 +73,10 @@ impl TrackerCli {
                     .map(|(uid, _)| *uid)
                     .collect::<Vec<EventUid>>(),
             );
+
+            if let Some(ref cmd) = cmd {
+                debug!("Matched command '{}'", cmd);
+            }
 
             // Check for exit
             if let Some(CommandKind::Exit) = cmd {
