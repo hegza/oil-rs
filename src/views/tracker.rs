@@ -192,10 +192,14 @@ impl TrackerCli {
                                 "  ({id:>2})   ({text}) - (triggers {time})",
                                 id = idx,
                                 text = event.text(),
-                                time = event
-                                    .next_trigger_time(&now)
-                                    .unwrap()
-                                    .format("on %d.%m. at %H:%M")
+                                time = {
+                                    let t = event.next_trigger_time(&now).unwrap();
+                                    if is_today(t) {
+                                        t.format("today at %H:%M")
+                                    } else {
+                                        t.format("on %d.%m. at %H:%M")
+                                    }
+                                }
                             );
                         }
                     }
