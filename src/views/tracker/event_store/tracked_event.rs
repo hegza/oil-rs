@@ -26,7 +26,7 @@ impl TrackedEvent {
         let now = Local::now();
 
         // Early out if the event's not going to trigger
-        let next = match self.next_trigger_time(&now) {
+        let next = match self.next_trigger_time() {
             Some(t) => t,
             None => return,
         };
@@ -51,7 +51,7 @@ impl TrackedEvent {
             }
         }
 
-        match self.next_trigger_time(at_time) {
+        match self.next_trigger_time() {
             // Wait doesn't apply if the event is not going to trigger
             None => return None,
             Some(next) => {
@@ -66,7 +66,7 @@ impl TrackedEvent {
         }
     }
     /// Returns the next time this event is going to trigger counting from given time
-    pub fn next_trigger_time(&self, counting_from: &LocalTime) -> Option<LocalTime> {
+    pub fn next_trigger_time(&self) -> Option<LocalTime> {
         let interval = self.event().interval();
         let state = self.state();
 
@@ -77,24 +77,23 @@ impl TrackedEvent {
             }
         }
 
+        let last_trigger = match &&state {
+            State::Dormant(registered) => *registered,
+            State::Triggered(trigger_times) => *trigger_times.last().unwrap(),
+            State::Completed(time) => *time,
+        };
         match interval {
-            Interval::FromLastCompletion(delta) => match &state {
-                State::Dormant(registered) => Some(delta.apply_to(*registered)),
-                State::Triggered(trigger_times) => {
-                    Some(delta.apply_to(*trigger_times.last().unwrap()))
-                }
-                State::Completed(time) => Some(delta.apply_to(*time)),
-            },
+            Interval::FromLastCompletion(delta) => Some(delta.apply_to(last_trigger)),
             Interval::Annual(AnnualDay { month, day }, time) => {
                 let an_instance = LocalTime::from_utc(
-                    NaiveDate::from_ymd(counting_from.year(), *month, *day).and_time(*time),
+                    NaiveDate::from_ymd(last_trigger.year(), *month, *day).and_time(*time),
                     FixedOffset::east(0),
                 );
 
                 // If the constructed instance is before our time, move it one year forward and return
-                Some(if &an_instance < counting_from {
+                Some(if an_instance < last_trigger {
                     LocalTime::from_utc(
-                        NaiveDate::from_ymd(counting_from.year() + 1, *month, *day).and_time(*time),
+                        NaiveDate::from_ymd(last_trigger.year() + 1, *month, *day).and_time(*time),
                         FixedOffset::east(0),
                     )
                 } else {
@@ -103,15 +102,15 @@ impl TrackedEvent {
             }
             Interval::Monthly(MonthlyDay { day }, time) => {
                 let an_instance = LocalTime::from_utc(
-                    NaiveDate::from_ymd(counting_from.year(), counting_from.month(), *day)
+                    NaiveDate::from_ymd(last_trigger.year(), last_trigger.month(), *day)
                         .and_time(*time),
                     FixedOffset::east(0),
                 );
 
                 // If the constructed instance is before our time, move it one month forward and return
-                Some(if &an_instance < counting_from {
+                Some(if an_instance < last_trigger {
                     LocalTime::from_utc(
-                        NaiveDate::from_ymd(counting_from.year(), counting_from.month() + 1, *day)
+                        NaiveDate::from_ymd(last_trigger.year(), last_trigger.month() + 1, *day)
                             .and_time(*time),
                         FixedOffset::east(0),
                     )
@@ -122,8 +121,8 @@ impl TrackedEvent {
             Interval::Weekly(weekday, time) => {
                 let an_instance = LocalTime::from_utc(
                     NaiveDate::from_isoywd(
-                        counting_from.year(),
-                        counting_from.iso_week().week(),
+                        last_trigger.year(),
+                        last_trigger.iso_week().week(),
                         *weekday,
                     )
                     .and_time(*time),
@@ -131,11 +130,11 @@ impl TrackedEvent {
                 );
 
                 // If the constructed instance is before our time, move it one week forward and return
-                Some(if &an_instance < counting_from {
+                Some(if an_instance < last_trigger {
                     LocalTime::from_utc(
                         NaiveDate::from_isoywd(
-                            counting_from.year(),
-                            counting_from.iso_week().week() + 1,
+                            last_trigger.year(),
+                            last_trigger.iso_week().week() + 1,
                             *weekday,
                         )
                         .and_time(*time),
@@ -148,21 +147,21 @@ impl TrackedEvent {
             Interval::Daily(time) => {
                 let an_instance = LocalTime::from_utc(
                     NaiveDate::from_ymd(
-                        counting_from.year(),
-                        counting_from.month(),
-                        counting_from.day(),
+                        last_trigger.year(),
+                        last_trigger.month(),
+                        last_trigger.day(),
                     )
                     .and_time(*time),
                     FixedOffset::east(0),
                 );
 
                 // If the constructed instance is before our time, move it one month forward and return
-                Some(if &an_instance < counting_from {
+                Some(if an_instance < last_trigger {
                     LocalTime::from_utc(
                         NaiveDate::from_ymd(
-                            counting_from.year(),
-                            counting_from.month(),
-                            counting_from.day() + 1,
+                            last_trigger.year(),
+                            last_trigger.month(),
+                            last_trigger.day() + 1,
                         )
                         .and_time(*time),
                         FixedOffset::east(0),

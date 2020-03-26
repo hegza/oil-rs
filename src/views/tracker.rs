@@ -150,7 +150,7 @@ impl TrackerCli {
         match self.state {
             // Extended mode: show all events, sorted by next trigger time
             ViewState::Extended => {
-                events.sort_by(|(_, te1), (_, te2)| sort_by_next_trigger(te1, te2, &now));
+                events.sort_by(|(_, te1), (_, te2)| sort_by_next_trigger(te1, te2));
             }
             // Standard mode: show triggered events + lookahead, sorted by next trigger time
             ViewState::Standard => {
@@ -166,7 +166,7 @@ impl TrackerCli {
                     })
                     .map(|&x| x)
                     .collect::<Vec<(EventUid, &TrackedEvent)>>();
-                filtered_events.sort_by(|(_, te1), (_, te2)| sort_by_next_trigger(te1, te2, &now));
+                filtered_events.sort_by(|(_, te1), (_, te2)| sort_by_next_trigger(te1, te2));
                 events = filtered_events;
             }
         }
@@ -198,7 +198,7 @@ impl TrackerCli {
                                 id = idx,
                                 text = event.text(),
                                 time = {
-                                    let t = event.next_trigger_time(&now).unwrap();
+                                    let t = event.next_trigger_time().unwrap();
                                     if is_today(t) {
                                         t.format("today at %H:%M")
                                     } else {
@@ -215,7 +215,7 @@ impl TrackerCli {
                         id = idx,
                         text = event.text(),
                         interval = event.event().interval(),
-                        next = match &event.next_trigger_time(&now) {
+                        next = match &event.next_trigger_time() {
                             None => format!("{:>16}", "Not scheduled"),
                             Some(time) => format!(
                                 "{:<10} {:<5}",
@@ -643,9 +643,8 @@ pub fn input_time(prompt: &str) -> Option<chrono::NaiveTime> {
     }
 }
 
-fn sort_by_next_trigger(te1: &TrackedEvent, te2: &TrackedEvent, now: &LocalTime) -> Ordering {
-    te1.next_trigger_time(&now)
-        .cmp(&te2.next_trigger_time(&now))
+fn sort_by_next_trigger(te1: &TrackedEvent, te2: &TrackedEvent) -> Ordering {
+    te1.next_trigger_time().cmp(&te2.next_trigger_time())
 }
 
 pub fn set_up_at(path: PathBuf) -> (Tracker, PathBuf) {
