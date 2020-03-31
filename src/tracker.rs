@@ -48,7 +48,7 @@ impl Tracker {
         }
     }
 
-    pub fn update_events_from_disk(&mut self) {
+    pub fn update_events(&mut self) {
         self.tracked_events.update_events();
     }
     pub fn refresh_from_disk<P>(&mut self, path: P) -> Result<(), LoadError>

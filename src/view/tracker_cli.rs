@@ -38,8 +38,8 @@ impl TrackerCli {
             // Set up cached variables
             let now = Local::now();
 
-            trace!("Refreshing tracked events from disk");
-            self.tracker.update_events_from_disk();
+            trace!("Refreshing tracked events");
+            self.tracker.update_events();
 
             // List of events, filtered and sorted for ui. Vector index indicates UI ID.
             trace!("Generating list of events for UI");
