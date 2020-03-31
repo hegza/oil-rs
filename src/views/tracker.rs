@@ -184,53 +184,7 @@ impl TrackerCli {
         // Print status
         println!("=== Events ({}) ===", state_str);
         for (idx, (_, event)) in visible_events.iter().enumerate() {
-            match self.state {
-                ViewState::Standard => match event.state() {
-                    // Show triggered entries
-                    State::Triggered(_) => {
-                        println!("* ({id:>2})   {text}", id = idx, text = event.text());
-                    }
-                    // Show non-triggered with details if requested
-                    _ => {
-                        if let Some(_) = event.fraction_of_interval_remaining(&now) {
-                            println!(
-                                "  ({id:>2})   ({text}) - (triggers {time})",
-                                id = idx,
-                                text = event.text(),
-                                time = {
-                                    let t = event.next_trigger_time().unwrap();
-                                    if is_today(t) {
-                                        t.format("today at %H:%M")
-                                    } else {
-                                        t.format("on %d.%m. at %H:%M")
-                                    }
-                                }
-                            );
-                        }
-                    }
-                },
-                ViewState::Extended => {
-                    println!(
-                        "{trig} ({id:>2}) {next} - {text} ({interval}, current: {state:?})",
-                        id = idx,
-                        text = event.text(),
-                        interval = event.event().interval(),
-                        next = match &event.next_trigger_time() {
-                            None => format!("{:>16}", "Not scheduled"),
-                            Some(time) => format!(
-                                "{:<10} {:<5}",
-                                time.format("%a %-d.%-m."),
-                                time.format("%H:%M")
-                            ),
-                        },
-                        state = event.state(),
-                        trig = match event.state() {
-                            State::Triggered(_) => "*",
-                            _ => " ",
-                        }
-                    );
-                }
-            }
+            self.print_event_line(idx, event, &now);
         }
 
         // Print commands
@@ -267,6 +221,56 @@ impl TrackerCli {
         let prev = self.state;
         self.state = s;
         prev
+    }
+
+    fn print_event_line(&self, idx: usize, event: &TrackedEvent, now: &LocalTime) {
+        match self.state {
+            ViewState::Standard => match event.state() {
+                // Show triggered entries
+                State::Triggered(_) => {
+                    println!("* ({id:>2})   {text}", id = idx, text = event.text());
+                }
+                // Show non-triggered with details if requested
+                _ => {
+                    if let Some(_) = event.fraction_of_interval_remaining(now) {
+                        println!(
+                            "  ({id:>2})   ({text}) - (triggers {time})",
+                            id = idx,
+                            text = event.text(),
+                            time = {
+                                let t = event.next_trigger_time().unwrap();
+                                if is_today(t) {
+                                    t.format("today at %H:%M")
+                                } else {
+                                    t.format("on %d.%m. at %H:%M")
+                                }
+                            }
+                        );
+                    }
+                }
+            },
+            ViewState::Extended => {
+                println!(
+                    "{trig} ({id:>2}) {next} - {text} ({interval}, current: {state:?})",
+                    id = idx,
+                    text = event.text(),
+                    interval = event.event().interval(),
+                    next = match &event.next_trigger_time() {
+                        None => format!("{:>16}", "Not scheduled"),
+                        Some(time) => format!(
+                            "{:<10} {:<5}",
+                            time.format("%a %-d.%-m."),
+                            time.format("%H:%M")
+                        ),
+                    },
+                    state = event.state(),
+                    trig = match event.state() {
+                        State::Triggered(_) => "*",
+                        _ => " ",
+                    }
+                );
+            }
+        }
     }
 }
 
