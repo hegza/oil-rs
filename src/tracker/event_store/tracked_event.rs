@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TrackedEvent(Event, State);
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Ord, PartialOrd, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct Uid(pub usize);
+
 impl TrackedEvent {
     pub fn with_state(source: Event, state: State) -> TrackedEvent {
         TrackedEvent(source, state)

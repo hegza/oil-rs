@@ -1,10 +1,10 @@
 use crate::prelude::*;
-use crate::view::tracker;
-use crate::view::tracker::Tracker;
+use crate::tracker;
 use dialoguer::{theme::ColorfulTheme, Input, Select};
 use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
+use tracker::Tracker;
 
 /// Displays a UI for finding or creating a Tracker cache file.  
 pub fn ask_tracker_file() -> (Tracker, PathBuf) {

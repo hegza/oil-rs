@@ -1,26 +1,16 @@
-mod commands;
-mod error;
-mod event_store;
-#[cfg(test)]
-mod tests;
-
 use crate::event::{AnnualDay, Event, Interval, State};
 use crate::prelude::*;
-use crate::view::tracker::commands::{Apply, CommandReceiver, FnApply, COMMAND_KEYS};
+use crate::tracker;
 use chrono::{DateTime, Local, Timelike, Weekday};
-use commands::{match_command, CommandKind, CreateCommand};
-use dialoguer::{
-    theme::{ColorfulTheme, CustomPromptCharacterTheme},
-    Confirmation, Input, Select,
-};
-pub use error::*;
-use event_store::{EventStore, TrackedEvent, Uid as EventUid};
+use dialoguer::theme;
 use std::cmp::Ordering;
 use std::convert::TryInto;
-use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::string::ToString;
+use tracker::{command, event_store::TrackedEvent, Tracker};
+
+pub const LOOK_AHEAD_FRAC: f64 = 1. / 12.;
 
 pub struct TrackerCli {
     state: ViewState,
@@ -61,17 +51,19 @@ impl TrackerCli {
 
             // 2. Get input from user (main interface)
             debug!("Getting user input (main 2/5)");
-            let input = Input::<String>::with_theme(&CustomPromptCharacterTheme::new('>'))
-                .allow_empty(true)
-                .interact()
-                .expect("could not parse string from user input");
+            let input = dialoguer::Input::<String>::with_theme(
+                &theme::CustomPromptCharacterTheme::new('>'),
+            )
+            .allow_empty(true)
+            .interact()
+            .expect("could not parse string from user input");
             debug!("User input: '{}'", &input);
-            let cmd = match_command(
+            let cmd = command::match_command(
                 &input,
                 &events_list
                     .iter()
                     .map(|(uid, _)| *uid)
-                    .collect::<Vec<EventUid>>(),
+                    .collect::<Vec<tracker::Uid>>(),
             );
 
             if let Some(ref cmd) = cmd {
@@ -79,7 +71,7 @@ impl TrackerCli {
             }
 
             // Check for exit
-            if let Some(CommandKind::Exit) = cmd {
+            if let Some(command::CommandKind::Exit) = cmd {
                 return;
             }
 
@@ -105,7 +97,7 @@ impl TrackerCli {
         }
     }
 
-    fn apply_command(&mut self, cmd: Option<CommandKind>) -> ControlAction {
+    fn apply_command(&mut self, cmd: Option<command::CommandKind>) -> ControlAction {
         // If no command was parsed, return to input step
         let cmd = match cmd {
             Some(c) => c,
@@ -113,7 +105,7 @@ impl TrackerCli {
         };
 
         // Match and apply command
-        use commands::*;
+        use command::*;
         match cmd {
             CommandKind::Exit => return ControlAction::Exit,
             CommandKind::CliCommand(cmd) => self.apply(cmd),
@@ -130,8 +122,8 @@ impl TrackerCli {
         ControlAction::Proceed
     }
 
-    fn apply(&mut self, cmd: Box<dyn Apply>) {
-        let result = cmd.apply(CommandReceiver::TrackerCli(self));
+    fn apply(&mut self, cmd: Box<dyn command::Apply>) {
+        let result = cmd.apply(command::CommandReceiver::TrackerCli(self));
         match result {
             Ok(apply) => {
                 if let Some(_) = apply {
@@ -144,7 +136,7 @@ impl TrackerCli {
         }
     }
 
-    fn generate_events_list(&self, now: &DateTime<Local>) -> Vec<(EventUid, &TrackedEvent)> {
+    fn generate_events_list(&self, now: &DateTime<Local>) -> Vec<(tracker::Uid, &TrackedEvent)> {
         let mut events = self.tracker.events();
         // Sort
         match self.state {
@@ -165,7 +157,7 @@ impl TrackerCli {
                         },
                     })
                     .map(|&x| x)
-                    .collect::<Vec<(EventUid, &TrackedEvent)>>();
+                    .collect::<Vec<(tracker::Uid, &TrackedEvent)>>();
                 filtered_events.sort_by(|(_, te1), (_, te2)| sort_by_next_trigger(te1, te2));
                 events = filtered_events;
             }
@@ -173,7 +165,7 @@ impl TrackerCli {
         events
     }
 
-    fn visualize(&self, visible_events: &[(EventUid, &TrackedEvent)]) {
+    fn visualize(&self, visible_events: &[(tracker::Uid, &TrackedEvent)]) {
         let now = Local::now();
 
         let state_str = match self.state {
@@ -189,7 +181,7 @@ impl TrackerCli {
 
         // Print commands
         println!("=== Commands ===");
-        for cmd in COMMAND_KEYS.iter() {
+        for cmd in command::COMMAND_KEYS.iter() {
             println!("{:<10} - {}", cmd.name, cmd.short_desc);
         }
     }
@@ -274,149 +266,10 @@ impl TrackerCli {
     }
 }
 
-pub struct Tracker {
-    tracked_events: EventStore,
-    undo_buffer: Vec<FnApply>,
-}
-
 #[derive(Clone, Copy, Debug)]
 pub enum ViewState {
     Standard,
     Extended,
-}
-
-pub const LOOK_AHEAD_FRAC: f64 = 1. / 12.;
-
-impl Tracker {
-    pub fn with_events(tracked_events: EventStore) -> Tracker {
-        Tracker {
-            tracked_events,
-            undo_buffer: Vec::new(),
-        }
-    }
-    pub fn empty() -> Tracker {
-        Tracker {
-            tracked_events: EventStore::new(),
-            undo_buffer: Vec::new(),
-        }
-    }
-    pub fn from_path<P>(path: P) -> Result<Tracker, LoadError>
-    where
-        P: AsRef<Path>,
-    {
-        debug!(
-            "Reading events for tracker from path: {}",
-            path.as_ref().to_string_lossy()
-        );
-        let events = EventStore::from_file(path);
-        match events {
-            Ok(events) => Ok(Tracker::with_events(events)),
-            Err(e) => Err(e),
-        }
-    }
-
-    pub fn update_events_from_disk(&mut self) {
-        self.tracked_events.update_events();
-    }
-    pub fn refresh_from_disk<P>(&mut self, path: P) -> Result<(), LoadError>
-    where
-        P: AsRef<Path>,
-    {
-        self.tracked_events = match EventStore::from_file(&path) {
-            Ok(ev) => ev,
-            Err(e) => {
-                warn!("Could not refresh events from disk: {:?}", e);
-                return Err(e);
-            }
-        };
-        Ok(())
-    }
-    pub fn store_to_disk<P>(&self, path: P)
-    where
-        P: AsRef<Path>,
-    {
-        match self.tracked_events.to_file(&path) {
-            Ok(()) => {}
-            Err(_) => {
-                Confirmation::new()
-                    .with_text("Failed to write to disk. Last operation will be cancelled.")
-                    .show_default(false)
-                    .interact()
-                    .unwrap();
-            }
-        }
-    }
-
-    pub fn apply_command(&mut self, cmd: &dyn Apply) -> Result<(), CommandError> {
-        let undo_op = match cmd.apply(CommandReceiver::Tracker(self)) {
-            Ok(f) => f,
-            Err(e) => {
-                return Err(e);
-            }
-        };
-        if let Some(apply) = undo_op {
-            self.undo_buffer.push(Box::new(apply));
-        }
-        Ok(())
-    }
-
-    pub fn events(&self) -> Vec<(EventUid, &TrackedEvent)> {
-        Vec::from_iter(self.tracked_events.iter().map(|(uid, ev)| (*uid, ev)))
-    }
-
-    pub fn undo(&mut self) {
-        trace!("Undo starts");
-
-        // No-op if nothing in buffer
-        if self.undo_buffer.is_empty() {
-            debug!("Attempted to undo with empty undo buffer");
-            println!("Cannot undo, undo buffer is empty");
-            return;
-        }
-
-        let undo_op = self.undo_buffer.pop().unwrap();
-        undo_op(self);
-    }
-
-    pub fn add_event(&mut self, event: Event) -> EventUid {
-        self.add_event_with_state(event, State::default())
-    }
-
-    // Returns None if an event was not found with id
-    pub fn remove_event(&mut self, uid: EventUid) -> Option<(Event, State)> {
-        match self.tracked_events.remove(uid) {
-            // Found: separate the return value
-            Ok(te) => Some((te.event().clone(), te.state().clone())),
-            // Not found: return None
-            Err(_) => None,
-        }
-    }
-
-    pub fn add_event_with_state(&mut self, event: Event, state: State) -> EventUid {
-        let uid = self.tracked_events.next_free_uid();
-        debug!("Registering a new event with UID {}: {:?}", uid, event);
-        let tracked_event = TrackedEvent::with_state(event, state);
-        trace!("Created TrackedEvent: {:?}", &tracked_event);
-
-        match self.tracked_events.add(uid, tracked_event) {
-            Ok(()) => uid,
-            Err(ItemAlreadyExistsError(k, ov, _)) => {
-                panic!(
-                    "Attempted to register an event with UID {} that was already reserved for: {:#?}", k, ov
-                );
-            }
-        }
-    }
-
-    /// Returns the event as mutable if it exists with given UID
-    pub fn get_event_mut(&mut self, uid: EventUid) -> Option<&mut TrackedEvent> {
-        self.tracked_events.get_mut(uid).ok()
-    }
-
-    /// Gets the state of the event as mutable if event exists with given UID
-    pub fn get_event_state_mut(&mut self, uid: EventUid) -> Option<&mut State> {
-        self.get_event_mut(uid).map(|e| e.state_mut())
-    }
 }
 
 enum ControlAction {
@@ -425,9 +278,9 @@ enum ControlAction {
     Exit,
 }
 
-pub fn create_event_interact() -> Option<CreateCommand> {
+pub fn create_event_interact() -> Option<command::CreateCommand> {
     // What?
-    let text = Input::<String>::new()
+    let text = dialoguer::Input::<String>::new()
         .with_prompt("What? (type text)")
         .allow_empty(true)
         .interact()
@@ -446,7 +299,7 @@ pub fn create_event_interact() -> Option<CreateCommand> {
         "Annually",
     ];
 
-    let selection = Select::with_theme(&ColorfulTheme::default())
+    let selection = dialoguer::Select::with_theme(&theme::ColorfulTheme::default())
         .with_prompt("Choose when to trigger the event")
         .default(0)
         .items(&choices[..])
@@ -552,7 +405,7 @@ pub fn create_event_interact() -> Option<CreateCommand> {
         _ => unreachable!(),
     };
 
-    Some(CreateCommand(Event::new(interval, text)))
+    Some(command::CreateCommand(Event::new(interval, text)))
 }
 
 pub fn create_timedelta() -> Option<crate::event::TimeDelta> {
@@ -563,7 +416,7 @@ pub fn create_timedelta() -> Option<crate::event::TimeDelta> {
         "Trigger every h:mm hours and minutes",
     ];
 
-    let selection = Select::with_theme(&ColorfulTheme::default())
+    let selection = dialoguer::Select::with_theme(&theme::ColorfulTheme::default())
         .with_prompt("Choose the kind of timer to use for triggering the event")
         .default(0)
         .items(&choices[..])
@@ -596,7 +449,7 @@ where
     T: FromStr,
 {
     loop {
-        let input = Input::<String>::new()
+        let input = dialoguer::Input::<String>::new()
             .with_prompt(prompt)
             .allow_empty(true)
             .interact()
@@ -627,7 +480,7 @@ const TIME_FORMATS: &[&str] = &[
 
 pub fn input_time(prompt: &str) -> Option<chrono::NaiveTime> {
     loop {
-        let input = Input::<String>::new()
+        let input = dialoguer::Input::<String>::new()
             .with_prompt(prompt)
             .allow_empty(true)
             .interact()
@@ -660,7 +513,7 @@ pub fn set_up_at(path: PathBuf) -> (Tracker, PathBuf) {
     );
     let (tracker, path) = match Tracker::from_path(&path) {
         Ok(t) => (t, path),
-        Err(LoadError::FileDoesNotExist) => {
+        Err(tracker::LoadError::FileDoesNotExist) => {
             warn!(
                 "A tracker file was found in cache but not in filesystem at \"{}\", the user may have removed it",
                 path.to_str().expect("cannot make path into a string")
@@ -671,7 +524,7 @@ pub fn set_up_at(path: PathBuf) -> (Tracker, PathBuf) {
             );
             (Tracker::empty(), path)
         }
-        Err(LoadError::FileContentsMalformed(_, mal_path, _contents)) => {
+        Err(tracker::LoadError::FileContentsMalformed(_, mal_path, _contents)) => {
             warn!("File contents malformed, asking user for action");
             super::troubleshoot::ask_malformed_action(PathBuf::from_str(&mal_path).unwrap())
         }

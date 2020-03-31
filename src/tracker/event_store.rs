@@ -1,23 +1,18 @@
 mod tracked_event;
 
+use super::error::{ItemAlreadyExistsError, LoadError, NotFoundError, StoreError};
 use crate::prelude::*;
-use crate::view::tracker::error::{ItemAlreadyExistsError, LoadError, StoreError};
-use crate::view::tracker::NotFoundError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
-pub use tracked_event::TrackedEvent;
+pub use tracked_event::{TrackedEvent, Uid};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]
 pub struct EventStore(BTreeMap<Uid, TrackedEvent>);
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Ord, PartialOrd, PartialEq, Eq)]
-#[serde(transparent)]
-pub struct Uid(pub usize);
 
 impl EventStore {
     /// Returns a new, empty event store

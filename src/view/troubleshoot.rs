@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use crate::view::tracker::Tracker;
+use crate::tracker::Tracker;
 use dialoguer::{theme::ColorfulTheme, Select};
 use std::io::Read;
 use std::path::PathBuf;

@@ -1,13 +1,14 @@
 mod config;
 mod event;
 pub mod prelude;
+mod tracker;
 mod view;
 
 use config::Config;
 use prelude::*;
 use simplelog::Config as LogConfig;
 use simplelog::*;
-use view::tracker::TrackerCli;
+use view::tracker_cli::TrackerCli;
 
 const DEFAULT_CONFIG_NAME: &str = "oil.yaml";
 
@@ -62,7 +63,7 @@ fn main() {
                     .expect("cannot canonicalize path")
                     .to_string_lossy()
             );
-            view::tracker::set_up_at(p)
+            view::tracker_cli::set_up_at(p)
         }
     };
 
