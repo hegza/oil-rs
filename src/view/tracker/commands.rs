@@ -198,7 +198,7 @@ pub fn match_command(input: &str, id_to_uid: &[EventUid]) -> Option<CommandKind>
                 Some(cmd_input) => match cmd_input {
                     // 'Create' launches the event creation wizard
                     CommandInput::Create => {
-                        let cmd = match crate::views::tracker::create_event_interact() {
+                        let cmd = match crate::view::tracker::create_event_interact() {
                             Some(cmd) => cmd,
                             None => return None,
                         };
@@ -216,7 +216,7 @@ pub fn match_command(input: &str, id_to_uid: &[EventUid]) -> Option<CommandKind>
 
                         // TODO: create a real interface for the alter command
                         println!("Hack: using 'create event' interface to replace the old event");
-                        let cmd = match crate::views::tracker::create_event_interact() {
+                        let cmd = match crate::view::tracker::create_event_interact() {
                             Some(cmd) => AlterCommand(uid, cmd.0),
                             None => return None,
                         };

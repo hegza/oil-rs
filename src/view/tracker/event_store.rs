@@ -1,8 +1,8 @@
 mod tracked_event;
 
 use crate::prelude::*;
-use crate::views::tracker::error::{ItemAlreadyExistsError, LoadError, StoreError};
-use crate::views::tracker::NotFoundError;
+use crate::view::tracker::error::{ItemAlreadyExistsError, LoadError, StoreError};
+use crate::view::tracker::NotFoundError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;

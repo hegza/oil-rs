@@ -1,13 +1,13 @@
 mod config;
 mod event;
 pub mod prelude;
-mod views;
+mod view;
 
 use config::Config;
 use prelude::*;
 use simplelog::Config as LogConfig;
 use simplelog::*;
-use views::tracker::TrackerCli;
+use view::tracker::TrackerCli;
 
 const DEFAULT_CONFIG_NAME: &str = "oil.yaml";
 
@@ -45,7 +45,7 @@ fn main() {
         // Store the tracker file as the last used one and return
         None => {
             info!("No 'last opened' in config, asking user for a tracker file");
-            let (tracker, path) = views::prompt_file::ask_tracker_file();
+            let (tracker, path) = view::prompt_file::ask_tracker_file();
             config.last_open = Some(
                 path.canonicalize()
                     .expect("cannot canonicalize path")
@@ -62,7 +62,7 @@ fn main() {
                     .expect("cannot canonicalize path")
                     .to_string_lossy()
             );
-            views::tracker::set_up_at(p)
+            view::tracker::set_up_at(p)
         }
     };
 
