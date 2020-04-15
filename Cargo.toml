@@ -1,5 +1,5 @@
 [package]
-name = "oil"
+name = "mtracker"
 version = "0.1.0"
 authors = ["Henri Lunnikivi <henri.lunnikivi@gmail.com>"]
 edition = "2018"
