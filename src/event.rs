@@ -1,6 +1,7 @@
 use crate::prelude::*;
-use chrono::{Duration, Local, NaiveTime as Time, Timelike, Weekday};
-use serde::{Deserialize, Serialize, Serializer};
+use chrono::{Duration, Local, NaiveTime, Weekday};
+use crate::tracker::Time;
+use serde::{Deserialize, Serialize};
 use std::default::Default;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -46,10 +47,10 @@ impl std::fmt::Display for Event {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Interval {
     FromLastCompletion(TimeDelta),
-    Annual(AnnualDay, Time),
-    Monthly(MonthlyDay, Time),
-    Weekly(Weekday, Time),
-    Daily(Time),
+    Annual(AnnualDay, NaiveTime),
+    Monthly(MonthlyDay, NaiveTime),
+    Weekly(Weekday, NaiveTime),
+    Daily(NaiveTime),
     //MultiAnnual(Vec<AnnualDay>) // Not implemented
 }
 
@@ -168,55 +169,19 @@ impl std::fmt::Display for MonthlyDay {
     }
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Status {
     // Never before triggered or completed, .0 is time registered
-    Dormant(LocalTime),
+    Dormant(Time),
     // .0 is all trigger times since last completion
-    TriggeredAt(Vec<LocalTime>),
+    TriggeredAt(Vec<Time>),
     // Completed and ready to trigger again
-    Completed(LocalTime),
-}
-
-// Implement a custom serializer with lower precision timestamps, note that the full timestamp must
-// exist in runtime, but the serialized format can do with second precision.
-impl Serialize for Status {
-    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match *self {
-            Status::Dormant(ref time) => s.serialize_newtype_variant(
-                "Status",
-                0,
-                "Dormant",
-                // Time with truncated nanoseconds
-                &time.with_nanosecond(0).unwrap_or(time.clone()),
-            ),
-            Status::TriggeredAt(ref times) => s.serialize_newtype_variant(
-                "Status",
-                0,
-                "TriggeredAt",
-                // Time with truncated nanoseconds
-                &times
-                    .iter()
-                    .map(|time| time.with_nanosecond(0).unwrap_or(time.clone()))
-                    .collect::<Vec<LocalTime>>(),
-            ),
-            Status::Completed(ref time) => s.serialize_newtype_variant(
-                "Status",
-                0,
-                "Completed",
-                // Time with truncated nanoseconds
-                &time.with_nanosecond(0).unwrap_or(time.clone()),
-            ),
-        }
-    }
+    Completed(Time),
 }
 
 impl Default for Status {
     fn default() -> Self {
-        Status::Dormant(Local::now())
+        Status::Dormant(Time(Local::now()))
     }
 }
 
@@ -224,10 +189,10 @@ impl Status {
     pub fn trigger_now(&mut self, now: LocalTime) {
         match self {
             Status::Dormant { .. } | Status::Completed(_) => {
-                *self = Status::TriggeredAt(vec![now]);
+                *self = Status::TriggeredAt(vec![now.into()]);
             }
             Status::TriggeredAt(trigger_times) => {
-                trigger_times.push(now);
+                trigger_times.push(now.into());
             }
         }
     }

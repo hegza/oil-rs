@@ -231,7 +231,7 @@ impl TrackerCli {
                             text = event.text(),
                             time = {
                                 let t = event.next_trigger_time().unwrap();
-                                if is_today(t) {
+                                if is_today(&t) {
                                     t.format("today at %H:%M")
                                 } else {
                                     t.format("on %d.%m. at %H:%M")

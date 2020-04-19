@@ -502,7 +502,7 @@ impl Apply for CompleteCommand {
                 let old_state = match tracker.get_event_state_mut(uid) {
                     Some(state) => {
                         let old_state = state.clone();
-                        *state = Status::Completed(Local::now());
+                        *state = Status::Completed(Local::now().into());
                         old_state
                     }
                     None => return Err(CommandError::EventNotFound(uid)),

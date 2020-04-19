@@ -1,9 +1,12 @@
 pub mod command;
 mod error;
+mod time;
 pub mod event_store;
 #[cfg(test)]
 mod test;
 
+
+pub use time::Time;
 use crate::event::{Event, Status};
 use crate::prelude::*;
 use crate::tracker::command::{Apply, CommandReceiver, FnApply};
@@ -152,3 +155,4 @@ impl Tracker {
         self.get_event_mut(uid).map(|e| e.state_mut())
     }
 }
+

@@ -82,10 +82,10 @@ impl TrackedEvent {
         }
 
         let last_trigger = match &&state {
-            Status::Dormant(registered) => *registered,
-            Status::TriggeredAt(trigger_times) => *trigger_times.last().unwrap(),
-            Status::Completed(time) => *time,
-        };
+            Status::Dormant(registered) => registered,
+            Status::TriggeredAt(trigger_times) => trigger_times.last().unwrap(),
+            Status::Completed(time) => time,
+        }.0;
         match interval {
             Interval::FromLastCompletion(delta) => Some(delta.apply_to(last_trigger)),
             Interval::Annual(AnnualDay { month, day }, time) => {
