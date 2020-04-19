@@ -1,5 +1,5 @@
 use super::*;
-use crate::event::{Event, Interval, State, TimeDelta};
+use crate::event::{Event, Interval, Status, TimeDelta};
 
 #[test]
 fn event_lifecycle() {
@@ -15,7 +15,7 @@ fn event_lifecycle() {
 
     // Verify that the event is in dormant state
     match event.state() {
-        State::Dormant { .. } => {}
+        Status::Dormant { .. } => {}
         _ => unreachable!(),
     }
 

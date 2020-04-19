@@ -1,7 +1,7 @@
 use super::error::CommandError;
 use super::event_store::Uid as EventUid;
 use super::Tracker;
-use crate::event::{Event, State};
+use crate::event::{Event, Status};
 use crate::prelude::*;
 use crate::view::tracker_cli::{TrackerCli, ViewState};
 use chrono::Local;
@@ -502,7 +502,7 @@ impl Apply for CompleteCommand {
                 let old_state = match tracker.get_event_state_mut(uid) {
                     Some(state) => {
                         let old_state = state.clone();
-                        *state = State::Completed(Local::now());
+                        *state = Status::Completed(Local::now());
                         old_state
                     }
                     None => return Err(CommandError::EventNotFound(uid)),

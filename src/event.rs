@@ -169,7 +169,7 @@ impl std::fmt::Display for MonthlyDay {
 }
 
 #[derive(Deserialize, Clone, Debug)]
-pub enum State {
+pub enum Status {
     // Never before triggered or completed, .0 is time registered
     Dormant(LocalTime),
     // .0 is all trigger times since last completion
@@ -180,21 +180,21 @@ pub enum State {
 
 // Implement a custom serializer with lower precision timestamps, note that the full timestamp must
 // exist in runtime, but the serialized format can do with second precision.
-impl Serialize for State {
+impl Serialize for Status {
     fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         match *self {
-            State::Dormant(ref time) => s.serialize_newtype_variant(
-                "State",
+            Status::Dormant(ref time) => s.serialize_newtype_variant(
+                "Status",
                 0,
                 "Dormant",
                 // Time with truncated nanoseconds
                 &time.with_nanosecond(0).unwrap_or(time.clone()),
             ),
-            State::TriggeredAt(ref times) => s.serialize_newtype_variant(
-                "State",
+            Status::TriggeredAt(ref times) => s.serialize_newtype_variant(
+                "Status",
                 0,
                 "TriggeredAt",
                 // Time with truncated nanoseconds
@@ -203,8 +203,8 @@ impl Serialize for State {
                     .map(|time| time.with_nanosecond(0).unwrap_or(time.clone()))
                     .collect::<Vec<LocalTime>>(),
             ),
-            State::Completed(ref time) => s.serialize_newtype_variant(
-                "State",
+            Status::Completed(ref time) => s.serialize_newtype_variant(
+                "Status",
                 0,
                 "Completed",
                 // Time with truncated nanoseconds
@@ -214,19 +214,19 @@ impl Serialize for State {
     }
 }
 
-impl Default for State {
+impl Default for Status {
     fn default() -> Self {
-        State::Dormant(Local::now())
+        Status::Dormant(Local::now())
     }
 }
 
-impl State {
+impl Status {
     pub fn trigger_now(&mut self, now: LocalTime) {
         match self {
-            State::Dormant { .. } | State::Completed(_) => {
-                *self = State::TriggeredAt(vec![now]);
+            Status::Dormant { .. } | Status::Completed(_) => {
+                *self = Status::TriggeredAt(vec![now]);
             }
-            State::TriggeredAt(trigger_times) => {
+            Status::TriggeredAt(trigger_times) => {
                 trigger_times.push(now);
             }
         }

@@ -4,7 +4,7 @@ pub mod event_store;
 #[cfg(test)]
 mod test;
 
-use crate::event::{Event, State};
+use crate::event::{Event, Status};
 use crate::prelude::*;
 use crate::tracker::command::{Apply, CommandReceiver, FnApply};
 use dialoguer::Confirmation;
@@ -113,11 +113,11 @@ impl Tracker {
     }
 
     pub fn add_event(&mut self, event: Event) -> event_store::Uid {
-        self.add_event_with_state(event, State::default())
+        self.add_event_with_state(event, Status::default())
     }
 
     // Returns None if an event was not found with id
-    pub fn remove_event(&mut self, uid: event_store::Uid) -> Option<(Event, State)> {
+    pub fn remove_event(&mut self, uid: event_store::Uid) -> Option<(Event, Status)> {
         match self.tracked_events.remove(uid) {
             // Found: separate the return value
             Ok(te) => Some((te.event().clone(), te.state().clone())),
@@ -126,7 +126,7 @@ impl Tracker {
         }
     }
 
-    pub fn add_event_with_state(&mut self, event: Event, state: State) -> event_store::Uid {
+    pub fn add_event_with_state(&mut self, event: Event, state: Status) -> event_store::Uid {
         let uid = self.tracked_events.next_free_uid();
         debug!("Registering a new event with UID {}: {:?}", uid, event);
         let tracked_event = TrackedEvent::with_state(event, state);
@@ -148,7 +148,7 @@ impl Tracker {
     }
 
     /// Gets the state of the event as mutable if event exists with given UID
-    pub fn get_event_state_mut(&mut self, uid: event_store::Uid) -> Option<&mut State> {
+    pub fn get_event_state_mut(&mut self, uid: event_store::Uid) -> Option<&mut Status> {
         self.get_event_mut(uid).map(|e| e.state_mut())
     }
 }

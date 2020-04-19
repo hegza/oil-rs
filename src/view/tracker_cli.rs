@@ -1,4 +1,4 @@
-use crate::event::{AnnualDay, Event, Interval, State};
+use crate::event::{AnnualDay, Event, Interval, Status};
 use crate::prelude::*;
 use crate::tracker;
 use chrono::{DateTime, Local, Timelike, Weekday};
@@ -149,7 +149,7 @@ impl TrackerCli {
                 let mut filtered_events = events
                     .iter()
                     .filter(|&(_, event)| match event.state() {
-                        State::TriggeredAt(_) => true,
+                        Status::TriggeredAt(_) => true,
                         // Show other entries if their next trigger is within look-ahead scope
                         _ => match event.fraction_of_interval_remaining(&now) {
                             Some(remaining) if remaining < LOOK_AHEAD_FRAC => true,
@@ -219,7 +219,7 @@ impl TrackerCli {
         match self.state {
             ViewState::Standard => match event.state() {
                 // Show triggered entries
-                State::TriggeredAt(_) => {
+                Status::TriggeredAt(_) => {
                     println!("* ({id:>2})   {text}", id = idx, text = event.text());
                 }
                 // Show non-triggered with details if requested
@@ -257,7 +257,7 @@ impl TrackerCli {
                     },
                     state = event.state(),
                     trig = match event.state() {
-                        State::TriggeredAt(_) => "*",
+                        Status::TriggeredAt(_) => "*",
                         _ => " ",
                     }
                 );

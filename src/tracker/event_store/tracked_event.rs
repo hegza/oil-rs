@@ -1,17 +1,17 @@
-use crate::event::{AnnualDay, Event, Interval, MonthlyDay, State};
+use crate::event::{AnnualDay, Event, Interval, MonthlyDay, Status};
 use crate::prelude::*;
 use chrono::{Datelike, FixedOffset, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct TrackedEvent(Event, State);
+pub struct TrackedEvent(Event, Status);
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Ord, PartialOrd, PartialEq, Eq)]
 #[serde(transparent)]
 pub struct Uid(pub usize);
 
 impl TrackedEvent {
-    pub fn with_state(source: Event, state: State) -> TrackedEvent {
+    pub fn with_state(source: Event, state: Status) -> TrackedEvent {
         TrackedEvent(source, state)
     }
     pub fn text(&self) -> &str {
@@ -20,10 +20,10 @@ impl TrackedEvent {
     pub fn event(&self) -> &Event {
         &self.0
     }
-    pub fn state(&self) -> &State {
+    pub fn state(&self) -> &Status {
         &self.1
     }
-    pub fn state_mut(&mut self) -> &mut State {
+    pub fn state_mut(&mut self) -> &mut Status {
         &mut self.1
     }
     pub fn update(&mut self) {
@@ -49,7 +49,7 @@ impl TrackedEvent {
         let event = self.event();
 
         // Does not stack -> does not re-trigger
-        if let State::TriggeredAt(_) = state {
+        if let Status::TriggeredAt(_) = state {
             if !event.stacks() {
                 return None;
             }
@@ -75,16 +75,16 @@ impl TrackedEvent {
         let state = self.state();
 
         // Does not stack -> does not re-trigger
-        if let State::TriggeredAt(_) = state {
+        if let Status::TriggeredAt(_) = state {
             if !self.event().stacks() {
                 return None;
             }
         }
 
         let last_trigger = match &&state {
-            State::Dormant(registered) => *registered,
-            State::TriggeredAt(trigger_times) => *trigger_times.last().unwrap(),
-            State::Completed(time) => *time,
+            Status::Dormant(registered) => *registered,
+            Status::TriggeredAt(trigger_times) => *trigger_times.last().unwrap(),
+            Status::Completed(time) => *time,
         };
         match interval {
             Interval::FromLastCompletion(delta) => Some(delta.apply_to(last_trigger)),
