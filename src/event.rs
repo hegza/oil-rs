@@ -173,7 +173,7 @@ pub enum State {
     // Never before triggered or completed, .0 is time registered
     Dormant(LocalTime),
     // .0 is all trigger times since last completion
-    Triggered(Vec<LocalTime>),
+    TriggeredAt(Vec<LocalTime>),
     // Completed and ready to trigger again
     Completed(LocalTime),
 }
@@ -193,10 +193,10 @@ impl Serialize for State {
                 // Time with truncated nanoseconds
                 &time.with_nanosecond(0).unwrap_or(time.clone()),
             ),
-            State::Triggered(ref times) => s.serialize_newtype_variant(
+            State::TriggeredAt(ref times) => s.serialize_newtype_variant(
                 "State",
                 0,
-                "Triggered",
+                "TriggeredAt",
                 // Time with truncated nanoseconds
                 &times
                     .iter()
@@ -224,9 +224,9 @@ impl State {
     pub fn trigger_now(&mut self, now: LocalTime) {
         match self {
             State::Dormant { .. } | State::Completed(_) => {
-                *self = State::Triggered(vec![now]);
+                *self = State::TriggeredAt(vec![now]);
             }
-            State::Triggered(trigger_times) => {
+            State::TriggeredAt(trigger_times) => {
                 trigger_times.push(now);
             }
         }

@@ -49,7 +49,7 @@ impl TrackedEvent {
         let event = self.event();
 
         // Does not stack -> does not re-trigger
-        if let State::Triggered(_) = state {
+        if let State::TriggeredAt(_) = state {
             if !event.stacks() {
                 return None;
             }
@@ -75,7 +75,7 @@ impl TrackedEvent {
         let state = self.state();
 
         // Does not stack -> does not re-trigger
-        if let State::Triggered(_) = state {
+        if let State::TriggeredAt(_) = state {
             if !self.event().stacks() {
                 return None;
             }
@@ -83,7 +83,7 @@ impl TrackedEvent {
 
         let last_trigger = match &&state {
             State::Dormant(registered) => *registered,
-            State::Triggered(trigger_times) => *trigger_times.last().unwrap(),
+            State::TriggeredAt(trigger_times) => *trigger_times.last().unwrap(),
             State::Completed(time) => *time,
         };
         match interval {

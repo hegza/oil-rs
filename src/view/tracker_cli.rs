@@ -149,7 +149,7 @@ impl TrackerCli {
                 let mut filtered_events = events
                     .iter()
                     .filter(|&(_, event)| match event.state() {
-                        State::Triggered(_) => true,
+                        State::TriggeredAt(_) => true,
                         // Show other entries if their next trigger is within look-ahead scope
                         _ => match event.fraction_of_interval_remaining(&now) {
                             Some(remaining) if remaining < LOOK_AHEAD_FRAC => true,
@@ -219,7 +219,7 @@ impl TrackerCli {
         match self.state {
             ViewState::Standard => match event.state() {
                 // Show triggered entries
-                State::Triggered(_) => {
+                State::TriggeredAt(_) => {
                     println!("* ({id:>2})   {text}", id = idx, text = event.text());
                 }
                 // Show non-triggered with details if requested
@@ -257,7 +257,7 @@ impl TrackerCli {
                     },
                     state = event.state(),
                     trig = match event.state() {
-                        State::Triggered(_) => "*",
+                        State::TriggeredAt(_) => "*",
                         _ => " ",
                     }
                 );
