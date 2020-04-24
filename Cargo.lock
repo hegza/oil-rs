@@ -217,6 +217,7 @@ dependencies = [
  "chrono",
  "dialoguer",
  "dirs",
+ "lazy_static",
  "log",
  "serde",
  "serde_yaml",
