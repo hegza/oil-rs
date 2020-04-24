@@ -69,5 +69,5 @@ fn main() {
 
     info!("User starts interaction with tracker");
     let mut gui = TrackerCli::new(tracker);
-    gui.interact(&path);
+    gui.interact_modal(&path);
 }

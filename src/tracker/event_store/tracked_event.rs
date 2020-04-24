@@ -1,30 +1,28 @@
-use crate::event::{AnnualDay, Event, Interval, MonthlyDay, Status};
+use crate::event::{AnnualDay, EventData, Interval, MonthlyDay, Status};
 use crate::prelude::*;
 use chrono::{Datelike, FixedOffset, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct TrackedEvent(Event, Status);
+pub struct TrackedEvent(pub EventData, pub Status);
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Ord, PartialOrd, PartialEq, Eq)]
 #[serde(transparent)]
 pub struct Uid(pub usize);
 
 impl TrackedEvent {
-    pub fn with_state(source: Event, state: Status) -> TrackedEvent {
+    pub fn with_state(source: EventData, state: Status) -> TrackedEvent {
         TrackedEvent(source, state)
+    }
+
+    pub fn is_triggered(&self) -> bool {
+        self.1.is_triggered()
+    }
+    pub fn is_done(&self) -> bool {
+        self.1.is_done()
     }
     pub fn text(&self) -> &str {
         self.0.text()
-    }
-    pub fn event(&self) -> &Event {
-        &self.0
-    }
-    pub fn state(&self) -> &Status {
-        &self.1
-    }
-    pub fn state_mut(&mut self) -> &mut Status {
-        &mut self.1
     }
     pub fn update(&mut self) {
         let now = Local::now();
@@ -36,17 +34,21 @@ impl TrackedEvent {
         };
 
         if now >= next {
-            self.trigger_now(now);
+            self.trigger_now();
         }
     }
-    /// Returns if event was actually triggered
-    pub fn trigger_now(&mut self, now: LocalTime) -> bool {
-        self.state_mut().trigger_now(now);
+    /// Returns true if the event moved from an untriggered start to a triggered state
+    pub fn trigger_at(&mut self, _t: LocalTime) -> bool {
+        unimplemented!()
+    }
+    /// Returns true if the event moved from an untriggered start to a triggered state
+    pub fn trigger_now(&mut self) -> bool {
+        self.1.trigger_now();
         true
     }
     pub fn fraction_of_interval_remaining(&self, at_time: &LocalTime) -> Option<f64> {
-        let state = self.state();
-        let event = self.event();
+        let state = &self.1;
+        let event = &self.0;
 
         // Does not stack -> does not re-trigger
         if let Status::TriggeredAt(_) = state {
@@ -71,12 +73,12 @@ impl TrackedEvent {
     }
     /// Returns the next time this event is going to trigger counting from given time
     pub fn next_trigger_time(&self) -> Option<LocalTime> {
-        let interval = self.event().interval();
-        let state = self.state();
+        let interval = self.0.interval();
+        let state = &self.1;
 
         // Does not stack -> does not re-trigger
         if let Status::TriggeredAt(_) = state {
-            if !self.event().stacks() {
+            if !self.0.stacks() {
                 return None;
             }
         }
@@ -85,7 +87,8 @@ impl TrackedEvent {
             Status::Dormant(registered) => registered,
             Status::TriggeredAt(trigger_times) => trigger_times.last().unwrap(),
             Status::Completed(time) => time,
-        }.0;
+        }
+        .0;
         match interval {
             Interval::FromLastCompletion(delta) => Some(delta.apply_to(last_trigger)),
             Interval::Annual(AnnualDay { month, day }, time) => {

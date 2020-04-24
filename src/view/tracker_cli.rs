@@ -1,4 +1,4 @@
-use crate::event::{AnnualDay, Event, Interval, Status};
+use crate::event::{AnnualDay, EventData, Interval, Status};
 use crate::prelude::*;
 use crate::tracker;
 use chrono::{DateTime, Local, Timelike, Weekday};
@@ -8,13 +8,13 @@ use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::string::ToString;
-use tracker::{command, event_store::TrackedEvent, Tracker};
+use tracker::{command, event_store::TrackedEvent, Tracker, Uid};
 
 pub const LOOK_AHEAD_FRAC: f64 = 1. / 12.;
 
 pub struct TrackerCli {
     state: ViewState,
-    tracker: Tracker,
+    pub tracker: Tracker,
 }
 
 impl TrackerCli {
@@ -25,8 +25,26 @@ impl TrackerCli {
         }
     }
 
+    pub fn call<S>(&mut self, input: S)
+    where
+        S: AsRef<str>,
+    {
+        debug!("Out-of-order 'call' starts");
+
+        let now = Local::now();
+        let visible_events = self.generate_events_list(&now);
+        let cmd = self.interpret(input.as_ref(), &visible_events);
+
+        debug!("Applying command...");
+        match self.apply_command(cmd) {
+            ControlAction::Proceed => {}
+            ControlAction::Exit => return,
+            ControlAction::Input => return,
+        }
+    }
+
     /// 1. Display tracker, 2. get input (modal), 3. refresh status from disk, 4. apply changes.
-    pub fn interact<P>(&mut self, path: P)
+    pub fn interact_modal<P>(&mut self, path: P)
     where
         P: AsRef<Path>,
     {
@@ -43,11 +61,11 @@ impl TrackerCli {
 
             // List of events, filtered and sorted for ui. Vector index indicates UI ID.
             trace!("Generating list of events for UI");
-            let events_list = self.generate_events_list(&now);
+            let visible_events = self.generate_events_list(&now);
 
             // 1. Display tracker (main UI)
             debug!("Visualizing tracker (main 1/5)");
-            self.visualize(&events_list);
+            self.visualize(&visible_events);
 
             // 2. Get input from user (main interface)
             debug!("Getting user input (main 2/5)");
@@ -57,18 +75,7 @@ impl TrackerCli {
             .allow_empty(true)
             .interact()
             .expect("could not parse string from user input");
-            debug!("User input: '{}'", &input);
-            let cmd = command::match_command(
-                &input,
-                &events_list
-                    .iter()
-                    .map(|(uid, _)| *uid)
-                    .collect::<Vec<tracker::Uid>>(),
-            );
-
-            if let Some(ref cmd) = cmd {
-                debug!("Matched command '{}'", cmd);
-            }
+            let cmd = self.interpret(&input, &visible_events);
 
             // Check for exit
             if let Some(command::CommandKind::Exit) = cmd {
@@ -95,6 +102,32 @@ impl TrackerCli {
             debug!("Command applied succesfully, storing state to disk (main 5/5)");
             self.tracker.store_to_disk(&path);
         }
+    }
+
+    fn interpret<S>(
+        &self,
+        input: S,
+        visible_events: &[(Uid, &TrackedEvent)],
+    ) -> Option<command::CommandKind>
+    where
+        S: AsRef<str>,
+    {
+        let input = input.as_ref();
+
+        debug!("User input: '{}'", &input);
+        let cmd = command::match_command(
+            &input,
+            &visible_events
+                .iter()
+                .map(|(uid, _)| *uid)
+                .collect::<Vec<tracker::Uid>>(),
+        );
+
+        if let Some(ref cmd) = cmd {
+            debug!("Matched command '{}'", cmd);
+        }
+
+        cmd
     }
 
     fn apply_command(&mut self, cmd: Option<command::CommandKind>) -> ControlAction {
@@ -148,7 +181,7 @@ impl TrackerCli {
             ViewState::Standard => {
                 let mut filtered_events = events
                     .iter()
-                    .filter(|&(_, event)| match event.state() {
+                    .filter(|&(_, event)| match event.1 {
                         Status::TriggeredAt(_) => true,
                         // Show other entries if their next trigger is within look-ahead scope
                         _ => match event.fraction_of_interval_remaining(&now) {
@@ -165,7 +198,7 @@ impl TrackerCli {
         events
     }
 
-    fn visualize(&self, visible_events: &[(tracker::Uid, &TrackedEvent)]) {
+    fn visualize(&self, visible_events: &[(Uid, &TrackedEvent)]) {
         let now = Local::now();
 
         let state_str = match self.state {
@@ -175,7 +208,7 @@ impl TrackerCli {
 
         // Print status
         println!("=== Events ({}) ===", state_str);
-        for (idx, (_, event)) in visible_events.iter().enumerate() {
+        for (idx, (_, event)) in visible_events.as_ref().iter().enumerate() {
             self.print_event_line(idx, event, &now);
         }
 
@@ -217,7 +250,7 @@ impl TrackerCli {
 
     fn print_event_line(&self, idx: usize, event: &TrackedEvent, now: &LocalTime) {
         match self.state {
-            ViewState::Standard => match event.state() {
+            ViewState::Standard => match event.1 {
                 // Show triggered entries
                 Status::TriggeredAt(_) => {
                     println!("* ({id:>2})   {text}", id = idx, text = event.text());
@@ -246,7 +279,7 @@ impl TrackerCli {
                     "{trig} ({id:>2}) {next} - {text} ({interval}, current: {state:?})",
                     id = idx,
                     text = event.text(),
-                    interval = event.event().interval(),
+                    interval = event.0.interval(),
                     next = match &event.next_trigger_time() {
                         None => format!("{:>16}", "Not scheduled"),
                         Some(time) => format!(
@@ -255,8 +288,8 @@ impl TrackerCli {
                             time.format("%H:%M")
                         ),
                     },
-                    state = event.state(),
-                    trig = match event.state() {
+                    state = &event.1,
+                    trig = match event.1 {
                         Status::TriggeredAt(_) => "*",
                         _ => " ",
                     }
@@ -405,7 +438,7 @@ pub fn create_event_interact() -> Option<command::CreateCommand> {
         _ => unreachable!(),
     };
 
-    Some(command::CreateCommand(Event::new(interval, text)))
+    Some(command::CreateCommand(EventData::new(interval, text)))
 }
 
 pub fn create_timedelta() -> Option<crate::event::TimeDelta> {

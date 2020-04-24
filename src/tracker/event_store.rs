@@ -148,6 +148,13 @@ impl EventStore {
             None => Err(NotFoundError(uid)),
         }
     }
+    /// Returns a & to a stored event
+    pub fn get(&self, uid: Uid) -> Result<&TrackedEvent, NotFoundError<Uid>> {
+        match self.0.get(&uid) {
+            Some(te) => Ok(te),
+            None => Err(NotFoundError(uid)),
+        }
+    }
 }
 
 impl Uid {

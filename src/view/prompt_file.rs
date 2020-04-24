@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use tracker::Tracker;
 
-/// Displays a UI for finding or creating a Tracker cache file.  
-pub fn ask_tracker_file() -> (Tracker, PathBuf) {
+/// Displays a UI for finding or creating a Tracker cache file.
+pub fn ask_tracker_file<'te>() -> (Tracker, PathBuf) {
     let choices = &[
         "Create a new file for storing events...",
         "Open an existing file with stored events...",

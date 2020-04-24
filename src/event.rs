@@ -1,19 +1,19 @@
 use crate::prelude::*;
-use chrono::{Duration, Local, NaiveTime, Weekday};
 use crate::tracker::Time;
+use chrono::{Duration, Local, NaiveTime, Weekday};
 use serde::{Deserialize, Serialize};
 use std::default::Default;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct Event {
+pub struct EventData {
     text: String,
     interval: Interval,
     stacks: bool,
 }
 
-impl Event {
-    pub fn new(interval: Interval, text: String) -> Event {
-        Event {
+impl EventData {
+    pub fn new(interval: Interval, text: String) -> EventData {
+        EventData {
             interval,
             text,
             stacks: false,
@@ -30,7 +30,7 @@ impl Event {
     }
 }
 
-impl std::fmt::Display for Event {
+impl std::fmt::Display for EventData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let stack_str = match self.stacks {
             false => " (re-trigger overrides)",
@@ -38,7 +38,7 @@ impl std::fmt::Display for Event {
         };
         write!(
             f,
-            "Event {{ \"{}\", interval: {}{} }}",
+            "EventData {{ \"{}\", interval: {}{} }}",
             self.text, &self.interval, stack_str
         )
     }
@@ -186,13 +186,30 @@ impl Default for Status {
 }
 
 impl Status {
-    pub fn trigger_now(&mut self, now: LocalTime) {
+    pub fn is_triggered(&self) -> bool {
+        match self {
+            Status::Dormant { .. } | Status::Completed { .. } => false,
+            Status::TriggeredAt { .. } => true,
+        }
+    }
+    pub fn is_done(&self) -> bool {
+        match self {
+            Status::Dormant { .. } | Status::TriggeredAt { .. } => false,
+            Status::Completed { .. } => true,
+        }
+    }
+
+    /// Returns true if the event moved from an untriggered start to a triggered state
+    pub fn trigger_now(&mut self) -> bool {
+        let now = Local::now();
         match self {
             Status::Dormant { .. } | Status::Completed(_) => {
                 *self = Status::TriggeredAt(vec![now.into()]);
+                true
             }
             Status::TriggeredAt(trigger_times) => {
                 trigger_times.push(now.into());
+                false
             }
         }
     }

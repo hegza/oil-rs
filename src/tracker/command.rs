@@ -1,7 +1,7 @@
 use super::error::CommandError;
 use super::event_store::Uid as EventUid;
-use super::Tracker;
-use crate::event::{Event, Status};
+use super::{Tracker, TrackedEvent};
+use crate::event::{EventData, Status};
 use crate::prelude::*;
 use crate::view::tracker_cli::{TrackerCli, ViewState};
 use chrono::Local;
@@ -269,9 +269,9 @@ pub fn match_command(input: &str, id_to_uid: &[EventUid]) -> Option<CommandKind>
     }
 }
 
-pub enum CommandReceiver<'t> {
-    Tracker(&'t mut Tracker),
-    TrackerCli(&'t mut TrackerCli),
+pub enum CommandReceiver<'r> {
+    Tracker(&'r mut Tracker),
+    TrackerCli(&'r mut TrackerCli),
 }
 
 impl std::fmt::Debug for CommandReceiver<'_> {
@@ -352,7 +352,7 @@ macro_rules! impl_cmd(
 impl_cmd!(
     /// CreateCommand creates the given event with a UID
     /// Undo will remove the event with the UID
-    CreateCommand(Event),
+    CreateCommand(EventData),
     |self, target| {
         match target {
             CommandReceiver::Tracker(tracker) => {
@@ -371,7 +371,7 @@ impl_cmd!(
     }
 );
 
-impl_cmd!(AlterCommand(EventUid, Event), |self, target| {
+impl_cmd!(AlterCommand(EventUid, EventData), |self, target| {
     match target {
         CommandReceiver::Tracker(tracker) => {
             let old_uid = self.0;
@@ -406,26 +406,26 @@ impl_cmd!(TriggerCommand(EventUid), |self, target| {
             let uid = self.0;
 
             // Op
-            let old_state = match tracker.get_event_state_mut(uid) {
+            let old_state = match tracker.event_mut(uid) {
                 None => {
                     warn!("TriggerCommand failed because the event being triggered did not exist");
                     return Err(CommandError::EventNotFound(uid));
                 }
-                Some(state) => {
+                Some(TrackedEvent(_, state) ) => {
                     let old_state = state.clone();
-                    state.trigger_now(Local::now());
+                    state.trigger_now();
                     old_state
                 }
             };
 
             // Undo
             Ok(Some(Box::new(move |tracker: &mut Tracker| {
-                match tracker.get_event_state_mut(uid) {
+                match tracker.event_mut(uid) {
                     None => warn!(
                         "Undo failed for TriggerCommand with uid {} because uid did not exist",
                         uid
                     ),
-                    Some(state) => {
+                    Some(TrackedEvent(_, ref mut state)) => {
                         *state = old_state;
                     }
                 }
@@ -499,8 +499,8 @@ impl Apply for CompleteCommand {
                 let uid = self.0;
 
                 // Op
-                let old_state = match tracker.get_event_state_mut(uid) {
-                    Some(state) => {
+                let old_state = match tracker.event_mut(uid) {
+                    Some(TrackedEvent(_, state)) => {
                         let old_state = state.clone();
                         *state = Status::Completed(Local::now().into());
                         old_state
@@ -510,12 +510,12 @@ impl Apply for CompleteCommand {
 
                 // Undo
                 Ok(Some(Box::new(move |tracker| {
-                    match tracker.get_event_state_mut(uid) {
+                    match tracker.event_mut(uid) {
                         None => warn!(
                             "Undo failed for CompleteCommand with uid {} because uid did not exist",
                             uid
                         ),
-                        Some(state) => {
+                        Some(TrackedEvent(_, state)) => {
                             *state = old_state;
                         }
                     }

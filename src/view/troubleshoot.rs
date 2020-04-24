@@ -10,7 +10,7 @@ pub enum ActionOnMalformedFile {
     Cancel,
 }
 
-pub fn ask_malformed_action(p: PathBuf) -> (Tracker, PathBuf) {
+pub fn ask_malformed_action<'te>(p: PathBuf) -> (Tracker, PathBuf) {
     let c = &[
         "Ignore and exit",
         "Replace with default",
