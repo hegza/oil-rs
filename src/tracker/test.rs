@@ -33,3 +33,57 @@ fn event_lifecycle() {
     // Verify that the event is removed
     assert!(tracker.event_mut(handle).is_none());
 }
+
+#[test]
+fn multiset_done() {
+    let mut cli = TrackerCli::new(Tracker::empty());
+    let ev = TEST_EVENT.clone();
+
+    let events = {
+        let tracker = &mut cli.tracker;
+
+        // Add three events
+        let evs = (0..3)
+            .into_iter()
+            .map(|_| tracker.add_event(ev.clone()))
+            .collect::<Vec<Uid>>();
+
+        // Set events as triggered
+        evs.into_iter().for_each(|uid| {
+            tracker.event_mut(uid).unwrap().trigger_now();
+        });
+
+        tracker.events()
+    };
+
+    // Check that all events are triggered
+    assert!(events.iter().all(|(_, ev)| ev.is_triggered()));
+
+    // Pick two of the events to be set as done
+    let mut ev_it = events.iter().enumerate();
+    let set_ev_ids = ev_it
+        .by_ref()
+        .take(2)
+        .map(|(idx, (uid, _))| (idx, uid.clone()))
+        .collect::<Vec<(usize, Uid)>>();
+    let unset_ev_ids = ev_it
+        .take(1)
+        .map(|(idx, (uid, _))| (idx, uid.clone()))
+        .collect::<Vec<(usize, Uid)>>();
+
+    // Command to set two of the events as done, ie. "0 1"
+    let cmd = format!("{} {}", set_ev_ids[0].0, set_ev_ids[1].0);
+
+    // Set two events as done
+    cli.call(&cmd);
+
+    let tracker = &mut cli.tracker;
+
+    // Verify that the two events are done, and the last one is still triggered
+    assert!(
+        tracker.event(set_ev_ids[0].1).unwrap().is_done(),
+        "first event was not done after setting it done"
+    );
+    assert!(tracker.event(set_ev_ids[1].1).unwrap().is_done());
+    assert!(tracker.event(unset_ev_ids[0].1).unwrap().is_triggered());
+}

@@ -1,6 +1,6 @@
 use super::error::CommandError;
-use super::event_store::Uid as EventUid;
-use super::{Tracker, TrackedEvent};
+use super::event_store::Uid;
+use super::{TrackedEvent, Tracker};
 use crate::event::{EventData, Status};
 use crate::prelude::*;
 use crate::view::tracker_cli::{TrackerCli, ViewState};
@@ -177,14 +177,12 @@ impl Deref for CommandKeys {
 }
 
 /// Interpret user action as a command
-pub fn match_command(input: &str, id_to_uid: &[EventUid]) -> Option<CommandKind> {
+pub fn match_command(input: &str, id_to_uid: &[Uid]) -> Option<CommandKind> {
     // Sanitize
     let input = input.trim();
 
-    // Tokenize
-    let mut tokens = input.split_whitespace();
-
-    use CommandKind::*;
+    // Tokenize and trim tokens
+    let mut tokens = input.split_whitespace().map(|token| token.trim());
 
     // No tokens? Early out
     if tokens.clone().count() == 0 {
@@ -193,7 +191,8 @@ pub fn match_command(input: &str, id_to_uid: &[EventUid]) -> Option<CommandKind>
     }
 
     // Try to match a command from the first token
-    match tokens.nth(0).unwrap() {
+    use CommandKind::*;
+    match tokens.clone().nth(0).unwrap() {
         first_token if COMMAND_KEYS.is_match(first_token) => {
             match COMMAND_KEYS.command_input(first_token) {
                 Some(cmd_input) => match cmd_input {
@@ -207,7 +206,7 @@ pub fn match_command(input: &str, id_to_uid: &[EventUid]) -> Option<CommandKind>
                     }
                     // Rm removes an event with id
                     CommandInput::Remove => id_token_to_uid_interact(&mut tokens, id_to_uid)
-                        .map(|uid| DataCommand(Box::new(RemoveCommand(uid)))),
+                        .map(|uid| DataCommand(Box::new(RemoveCommand(vec![uid])))),
                     CommandInput::Alter => {
                         // Resolve uid first, and early out if not found
                         let uid = match id_token_to_uid_interact(&mut tokens, id_to_uid) {
@@ -233,27 +232,16 @@ pub fn match_command(input: &str, id_to_uid: &[EventUid]) -> Option<CommandKind>
                     //CommandInput::Refresh => Some(ReversibleCommand(Box::new(RefreshCommand))),
                     // Set item status as 'completed'
                     CommandInput::Complete => {
-                        // Try to match a number for "complete command"
-                        match first_token.parse::<usize>() {
-                            Ok(id) => {
-                                let uid = match id_to_uid.get(id) {
-                                    Some(uid) => uid,
-                                    None => {
-                                        println!("No event found for key {}", id);
-                                        return None;
-                                    }
-                                };
+                        // Try to match a number ID from all elements
+                        let uids = tokens
+                            .filter_map(|token| {
+                                token.parse::<usize>().ok().and_then(|id| id_to_uid.get(id))
+                            })
+                            .cloned()
+                            .collect::<Vec<Uid>>();
 
-                                Some(DataCommand(Box::new(CompleteCommand(*uid))))
-                            }
-
-                            // Nothing was matched, return None
-                            Err(_) => {
-                                debug!("Nothing was matched from {}", input);
-                                println!("Nothing matched from {}", input);
-                                None
-                            }
-                        }
+                        // Set up the command
+                        Some(DataCommand(Box::new(CompleteCommand(uids))))
                     }
                 },
                 None => unreachable!(),
@@ -291,11 +279,11 @@ pub trait Apply: Display + std::fmt::Debug {
     fn apply(&self, target: CommandReceiver) -> CommandResult;
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
-pub struct RemoveCommand(pub EventUid);
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct RemoveCommand(pub Vec<Uid>);
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
-pub struct CompleteCommand(pub EventUid);
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CompleteCommand(pub Vec<Uid>);
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct ShowCommand;
@@ -371,7 +359,7 @@ impl_cmd!(
     }
 );
 
-impl_cmd!(AlterCommand(EventUid, EventData), |self, target| {
+impl_cmd!(AlterCommand(Uid, EventData), |self, target| {
     match target {
         CommandReceiver::Tracker(tracker) => {
             let old_uid = self.0;
@@ -400,7 +388,7 @@ impl_cmd!(AlterCommand(EventUid, EventData), |self, target| {
     }
 });
 
-impl_cmd!(TriggerCommand(EventUid), |self, target| {
+impl_cmd!(TriggerCommand(Uid), |self, target| {
     match target {
         CommandReceiver::Tracker(tracker) => {
             let uid = self.0;
@@ -411,7 +399,7 @@ impl_cmd!(TriggerCommand(EventUid), |self, target| {
                     warn!("TriggerCommand failed because the event being triggered did not exist");
                     return Err(CommandError::EventNotFound(uid));
                 }
-                Some(TrackedEvent(_, state) ) => {
+                Some(TrackedEvent(_, state)) => {
                     let old_state = state.clone();
                     state.trigger_now();
                     old_state
@@ -450,8 +438,7 @@ impl Display for CommandKind {
 
 impl Display for RemoveCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let id = self.0;
-        write!(f, "cmd-rm({})", id)
+        write!(f, "cmd-rm({:?})", &self.0)
     }
 }
 
@@ -459,23 +446,28 @@ impl Apply for RemoveCommand {
     fn apply(&self, target: CommandReceiver) -> CommandResult {
         match target {
             CommandReceiver::Tracker(tracker) => {
-                let uid = self.0;
+                let uids = &self.0;
 
-                // Op
-                let (event, state) = match tracker.remove_event(uid) {
-                    None => {
-                        warn!(
-                            "Tried to unregister a non-existing event with unique-uid {} -> no-op",
-                            uid
-                        );
-                        return Err(CommandError::EventNotFound(uid));
+                let mut events = Vec::with_capacity(uids.len());
+                for &uid in uids {
+                    // Op
+                    match tracker.remove_event(uid) {
+                        None => {
+                            warn!(
+                                "Tried to unregister a non-existing event with unique-uid {} -> no-op",
+                                uid
+                            );
+                            return Err(CommandError::EventNotFound(uid));
+                        }
+                        Some(x) => events.push(x),
                     }
-                    Some(x) => x,
-                };
+                }
 
                 // Undo
                 Ok(Some(Box::new(move |tracker| {
-                    tracker.add_event_with_state(event, state);
+                    for event in events {
+                        tracker.add_event_with_state(event.0, event.1);
+                    }
                 })))
             }
             CommandReceiver::TrackerCli(_) => {
@@ -487,8 +479,7 @@ impl Apply for RemoveCommand {
 
 impl Display for CompleteCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let uid: EventUid = self.0;
-        write!(f, "cmd-complete({})", uid)
+        write!(f, "cmd-complete({:?})", &self.0)
     }
 }
 
@@ -496,27 +487,33 @@ impl Apply for CompleteCommand {
     fn apply(&self, target: CommandReceiver) -> CommandResult {
         match target {
             CommandReceiver::Tracker(tracker) => {
-                let uid = self.0;
+                let uids = &self.0;
 
-                // Op
-                let old_state = match tracker.event_mut(uid) {
-                    Some(TrackedEvent(_, state)) => {
-                        let old_state = state.clone();
-                        *state = Status::Completed(Local::now().into());
-                        old_state
-                    }
-                    None => return Err(CommandError::EventNotFound(uid)),
-                };
+                let mut states = Vec::with_capacity(uids.len());
+                for &uid in uids {
+                    // Op
+                    let old_state = match tracker.event_mut(uid) {
+                        Some(TrackedEvent(_, state)) => {
+                            let old_state = state.clone();
+                            *state = Status::Completed(Local::now().into());
+                            old_state
+                        }
+                        None => return Err(CommandError::EventNotFound(uid)),
+                    };
+                    states.push((uid, old_state));
+                }
 
                 // Undo
                 Ok(Some(Box::new(move |tracker| {
-                    match tracker.event_mut(uid) {
-                        None => warn!(
+                    for (uid, old_state) in states {
+                        match tracker.event_mut(uid) {
+                            None => warn!(
                             "Undo failed for CompleteCommand with uid {} because uid did not exist",
                             uid
                         ),
-                        Some(TrackedEvent(_, state)) => {
-                            *state = old_state;
+                            Some(TrackedEvent(_, state)) => {
+                                *state = old_state;
+                            }
                         }
                     }
                 })))
@@ -607,7 +604,7 @@ where
 }
 
 /// Returns the mapped UID based on the UI Tracker ID received as input
-fn id_token_to_uid_interact<'i, I>(input: &'i mut I, id_to_uid: &[EventUid]) -> Option<EventUid>
+fn id_token_to_uid_interact<'i, I>(input: &'i mut I, id_to_uid: &[Uid]) -> Option<Uid>
 where
     I: Iterator<Item = &'i str>,
 {
