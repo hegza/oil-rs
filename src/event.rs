@@ -51,18 +51,19 @@ pub enum Interval {
     Monthly(MonthlyDay, NaiveTime),
     Weekly(Weekday, NaiveTime),
     Daily(NaiveTime),
-    //MultiAnnual(Vec<AnnualDay>) // Not implemented
+    MultiAnnual(Vec<AnnualDay>), // Not implemented
 }
 
 impl Interval {
-    pub fn to_duration_heuristic(&self) -> Duration {
+    pub fn to_duration_heuristic(&self) -> Option<Duration> {
         use Interval::*;
         match self {
-            FromLastCompletion(delta) => delta.to_duration(),
-            Annual(_, _) => Duration::days(365),
-            Monthly(_, _) => Duration::days(30),
-            Weekly(_, _) => Duration::days(7),
-            Daily(_) => Duration::days(1),
+            FromLastCompletion(delta) => Some(delta.to_duration()),
+            Annual(_, _) => Some(Duration::days(365)),
+            Monthly(_, _) => Some(Duration::days(30)),
+            Weekly(_, _) => Some(Duration::days(7)),
+            Daily(_) => Some(Duration::days(1)),
+            MultiAnnual(_) => None,
         }
     }
 }
@@ -72,6 +73,7 @@ impl std::fmt::Display for Interval {
         use Interval::*;
         match self {
             FromLastCompletion(delta) => write!(f, "triggers {} after previous completion", delta),
+            MultiAnnual(days) => unimplemented!(),
             Annual(day, time) => write!(
                 f,
                 "triggers annually on {} at {}",

@@ -46,6 +46,8 @@ impl TrackedEvent {
         self.1.trigger_now();
         true
     }
+    /// Returns None if the fraction cannot be evaluated
+    /// TODO: doesn't work for multi-annual
     pub fn fraction_of_interval_remaining(&self, at_time: &LocalTime) -> Option<f64> {
         let state = &self.1;
         let event = &self.0;
@@ -62,7 +64,10 @@ impl TrackedEvent {
             None => return None,
             Some(next) => {
                 let seconds_until_next = next.signed_duration_since(*at_time).num_seconds();
-                let interval_seconds = event.interval().to_duration_heuristic().num_seconds();
+                let interval_seconds = match event.interval().to_duration_heuristic() {
+                    Some(d) => d.num_seconds(),
+                    None => return None,
+                };
 
                 match interval_seconds {
                     0 => Some(0.),
@@ -107,6 +112,7 @@ impl TrackedEvent {
                     an_instance
                 })
             }
+            Interval::MultiAnnual(_days) => unimplemented!(),
             Interval::Monthly(MonthlyDay { day }, time) => {
                 let an_instance = LocalTime::from_utc(
                     NaiveDate::from_ymd(last_trigger.year(), last_trigger.month(), *day)
