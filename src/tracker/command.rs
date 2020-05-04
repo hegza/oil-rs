@@ -205,11 +205,13 @@ pub fn match_command(input: &str, id_to_uid: &[Uid]) -> Option<CommandKind> {
                         Some(DataCommand(Box::new(cmd)))
                     }
                     // Rm removes an event with id
-                    CommandInput::Remove => id_token_to_uid_interact(&mut tokens, id_to_uid)
-                        .map(|uid| DataCommand(Box::new(RemoveCommand(vec![uid])))),
+                    CommandInput::Remove => {
+                        id_token_to_uid_interact(&mut tokens.skip(1), id_to_uid)
+                            .map(|uid| DataCommand(Box::new(RemoveCommand(vec![uid]))))
+                    }
                     CommandInput::Alter => {
                         // Resolve uid first, and early out if not found
-                        let uid = match id_token_to_uid_interact(&mut tokens, id_to_uid) {
+                        let uid = match id_token_to_uid_interact(&mut tokens.skip(1), id_to_uid) {
                             Some(uid) => uid,
                             None => return None,
                         };
@@ -222,8 +224,10 @@ pub fn match_command(input: &str, id_to_uid: &[Uid]) -> Option<CommandKind> {
                         };
                         Some(DataCommand(Box::new(cmd)))
                     }
-                    CommandInput::Trigger => id_token_to_uid_interact(&mut tokens, id_to_uid)
-                        .map(|uid| DataCommand(Box::new(TriggerCommand(uid)))),
+                    CommandInput::Trigger => {
+                        id_token_to_uid_interact(&mut tokens.skip(1), id_to_uid)
+                            .map(|uid| DataCommand(Box::new(TriggerCommand(uid))))
+                    }
                     CommandInput::Show => Some(CliCommand(Box::new(ShowCommand))),
                     CommandInput::Hide => Some(CliCommand(Box::new(HideCommand))),
                     CommandInput::Undo => Some(Undo),
