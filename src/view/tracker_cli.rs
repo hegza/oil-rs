@@ -1,7 +1,7 @@
 use crate::event::{AnnualDay, EventData, Interval, Status};
 use crate::prelude::*;
 use crate::tracker;
-use chrono::{DateTime, Local, Timelike, Weekday};
+use chrono::{DateTime, Duration, Local, Timelike, Weekday};
 use dialoguer::theme;
 use std::cmp::Ordering;
 use std::convert::TryInto;
@@ -206,13 +206,45 @@ impl TrackerCli {
             ViewState::Extended => "extended",
         };
 
-        // Print status
-        println!("=== Events ({}) ===", state_str);
-        for (idx, (_, event)) in visible_events.as_ref().iter().enumerate() {
-            self.print_event_line(idx, event, &now);
+        // Figure out status
+        if visible_events.len() != 0 {
+            let visible_events: Vec<(usize, &(Uid, &TrackedEvent))> =
+                visible_events.as_ref().iter().enumerate().collect();
+            let split_idx = visible_events.iter().position(|(_idx, (_uid, event))| {
+                match event.0.interval().to_duration_heuristic() {
+                    Some(duration) => duration >= Duration::days(1) + Duration::hours(1),
+                    None => false,
+                }
+            });
+
+            let (daily_events, other_events) = match split_idx {
+                None => (visible_events.as_slice(), None),
+                Some(idx) => {
+                    let (a, b) = visible_events.split_at(idx);
+                    (a, Some(b))
+                }
+            };
+
+            // Print status
+            println!("=== Daily Events ({})) ===", state_str);
+            for (idx, (_, event)) in daily_events {
+                self.print_event_line(*idx, event, &now);
+            }
+            if let Some(events) = other_events {
+                println!();
+                println!("=== Events ({})) ===", state_str);
+                for (idx, (_, event)) in events {
+                    self.print_event_line(*idx, event, &now);
+                }
+            }
+        }
+        // No events: print something else
+        else {
+            println!("=== No Events ({})) ===", state_str);
         }
 
         // Print commands
+        println!();
         println!("=== Commands ===");
         for cmd in command::COMMAND_KEYS.iter() {
             println!("{:<10} - {}", cmd.name, cmd.short_desc);
