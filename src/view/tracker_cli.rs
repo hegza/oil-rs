@@ -171,7 +171,6 @@ impl TrackerCli {
 
     fn generate_events_list(&self, now: &DateTime<Local>) -> Vec<(tracker::Uid, &TrackedEvent)> {
         let mut events = self.tracker.events();
-        // Sort
         match self.state {
             // Extended mode: show all events, sorted by next trigger time
             ViewState::Extended => {

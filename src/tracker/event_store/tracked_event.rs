@@ -76,7 +76,7 @@ impl TrackedEvent {
             }
         }
     }
-    /// Returns the next time this event is going to trigger counting from given time
+    /// Returns the next time this event is going to trigger. Returns None if currently triggered.
     pub fn next_trigger_time(&self) -> Option<LocalTime> {
         let interval = self.0.interval();
         let state = &self.1;
