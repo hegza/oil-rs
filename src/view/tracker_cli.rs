@@ -52,6 +52,7 @@ impl TrackerCli {
             // Hint at loop reset
             debug!("Interact loop starts");
             println!();
+            println!();
 
             // Set up cached variables
             let now = Local::now();
