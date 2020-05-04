@@ -87,3 +87,44 @@ fn multiset_done() {
     assert!(tracker.event(set_ev_ids[1].1).unwrap().is_done());
     assert!(tracker.event(unset_ev_ids[0].1).unwrap().is_triggered());
 }
+
+#[test]
+fn trigger() {
+    let mut cli = TrackerCli::new(Tracker::empty());
+    let ev = TEST_EVENT.clone();
+
+    let events = {
+        let tracker = &mut cli.tracker;
+
+        // Add two events
+        tracker.add_event(ev.clone());
+        tracker.add_event(ev.clone());
+
+        tracker.events()
+    };
+
+    // Check that all events are not triggered
+    assert!(events.iter().all(|(_, ev)| !ev.is_triggered()));
+
+    // Pick an event to be set as done
+    let mut ev_it = events.into_iter().enumerate();
+    let (trig_ev_id, trig_uid) = {
+        let ev = ev_it.next().unwrap();
+        (ev.0, (ev.1).0)
+    };
+    let untrig_uid = (ev_it.next().unwrap().1).0;
+
+    // Trigger an event
+    // Command to trigger an event, ie. "trigger 1"
+    let cmd = format!("trigger {}", trig_ev_id);
+    cli.call(&cmd);
+
+    let tracker = &mut cli.tracker;
+
+    // Verify that one event is triggered, one is not
+    assert!(
+        tracker.event(trig_uid).unwrap().is_triggered(),
+        "first event was not triggered after setting it "
+    );
+    assert!(!tracker.event(untrig_uid).unwrap().is_triggered());
+}
