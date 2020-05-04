@@ -533,7 +533,21 @@ pub fn input_time(prompt: &str) -> Option<chrono::NaiveTime> {
 }
 
 fn sort_by_next_trigger(te1: &TrackedEvent, te2: &TrackedEvent) -> Ordering {
-    te1.next_trigger_time().cmp(&te2.next_trigger_time())
+    match (te1.next_trigger_time(), te2.next_trigger_time()) {
+        // Both are going to trigger in the future: later trigger == greater (goes later in list)
+        (Some(t1), Some(t2)) => t1.cmp(&t2),
+        // First one has a time when it's going to trigger, the other one is probably triggered already
+        // => First is greater (goes later in list)
+        (Some(_), None) => Ordering::Greater,
+        // First one triggered, the second
+        (None, Some(_)) => Ordering::Less,
+        // Both have triggered, order by general interval duration
+        (None, None) => te1
+            .0
+            .interval()
+            .to_duration_heuristic()
+            .cmp(&te2.0.interval().to_duration_heuristic()),
+    }
 }
 
 pub fn set_up_at(path: PathBuf) -> (Tracker, PathBuf) {
