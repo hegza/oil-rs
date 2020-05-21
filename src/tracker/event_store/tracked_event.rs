@@ -1,4 +1,4 @@
-use crate::event::{AnnualDay, EventData, Interval, MonthlyDay, Status, StatusKind};
+use crate::event::{AnnualDay, EventData, Interval, MonthlyDay, Status, StatusKind, TimePeriod};
 use crate::prelude::*;
 use chrono::{Datelike, FixedOffset, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -108,7 +108,7 @@ impl TrackedEvent {
         };
         match interval {
             Interval::FromLastCompletion(delta) => Some(delta.apply_to(count_point)),
-            Interval::Annual(AnnualDay { month, day }, time) => {
+            Interval::Periodic(TimePeriod::Annual(AnnualDay { month, day }, time)) => {
                 let an_instance = LocalTime::from_utc(
                     NaiveDate::from_ymd(count_point.year(), *month, *day).and_time(*time),
                     FixedOffset::east(0),
@@ -124,8 +124,8 @@ impl TrackedEvent {
                     an_instance
                 })
             }
-            Interval::MultiAnnual(_days) => unimplemented!(),
-            Interval::Monthly(MonthlyDay { day }, time) => {
+            Interval::Periodic(TimePeriod::MultiAnnual(_days)) => unimplemented!(),
+            Interval::Periodic(TimePeriod::Monthly(MonthlyDay { day }, time)) => {
                 let an_instance = LocalTime::from_utc(
                     NaiveDate::from_ymd(count_point.year(), count_point.month(), *day)
                         .and_time(*time),
@@ -143,7 +143,7 @@ impl TrackedEvent {
                     an_instance
                 })
             }
-            Interval::Weekly(weekday, time) => {
+            Interval::Periodic(TimePeriod::Weekly(weekday, time)) => {
                 let an_instance = LocalTime::from_utc(
                     NaiveDate::from_isoywd(
                         count_point.year(),
@@ -169,7 +169,7 @@ impl TrackedEvent {
                     an_instance
                 })
             }
-            Interval::Daily(time) => {
+            Interval::Periodic(TimePeriod::Daily(time)) => {
                 let an_instance = LocalTime::from_utc(
                     NaiveDate::from_ymd(count_point.year(), count_point.month(), count_point.day())
                         .and_time(*time),

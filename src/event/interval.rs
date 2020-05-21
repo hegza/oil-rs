@@ -1,7 +1,19 @@
 use super::*;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Interval {
     FromLastCompletion(TimeDelta),
+    Periodic(TimePeriod),
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum TimeDelta {
+    Days(i64),
+    Hm(i64, i64),
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum TimePeriod {
     Annual(AnnualDay, NaiveTime),
     Monthly(MonthlyDay, NaiveTime),
     Weekly(Weekday, NaiveTime),
@@ -14,11 +26,21 @@ impl Interval {
         use Interval::*;
         match self {
             FromLastCompletion(delta) => Some(delta.to_duration()),
+            Periodic(period) => period.to_duration_heuristic(),
+        }
+    }
+}
+
+impl TimePeriod {
+    pub fn to_duration_heuristic(&self) -> Option<Duration> {
+        use TimePeriod::*;
+        match self {
             Annual(_, _) => Some(Duration::days(365)),
             Monthly(_, _) => Some(Duration::days(30)),
             Weekly(_, _) => Some(Duration::days(7)),
             Daily(_) => Some(Duration::days(1)),
-            MultiAnnual(_) => None,
+            // Returns the average amount of time between the days, which is 365 / number of days
+            MultiAnnual(d) => Some(Duration::days(365 / d.len() as i64)),
         }
     }
 }
@@ -28,7 +50,20 @@ impl std::fmt::Display for Interval {
         use Interval::*;
         match self {
             FromLastCompletion(delta) => write!(f, "triggers {} after previous completion", delta),
-            MultiAnnual(days) => unimplemented!(),
+            Periodic(p) => write!(f, "{}", p),
+        }
+    }
+}
+
+impl std::fmt::Display for TimePeriod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use TimePeriod::*;
+        match self {
+            MultiAnnual(days) => write!(
+                f,
+                "triggers multi-annually on following dates and times {:?}",
+                &days
+            ),
             Annual(day, time) => write!(
                 f,
                 "triggers annually on {} at {}",
@@ -47,12 +82,6 @@ impl std::fmt::Display for Interval {
             Daily(time) => write!(f, "triggers daily at {}", time.format("%H:%M")),
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum TimeDelta {
-    Days(i64),
-    Hm(i64, i64),
 }
 
 impl std::fmt::Display for TimeDelta {

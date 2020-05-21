@@ -1,4 +1,4 @@
-use crate::event::{AnnualDay, EventData, Interval, Status, StatusKind};
+use crate::event::{AnnualDay, EventData, Interval, Status, StatusKind, TimePeriod};
 use crate::prelude::*;
 use crate::tracker;
 use chrono::{DateTime, Duration, Local, Timelike, Weekday};
@@ -390,7 +390,7 @@ pub fn create_event_interact() -> Option<command::CreateCommand> {
                     return None;
                 }
             };
-            Interval::Daily(time)
+            Interval::Periodic(TimePeriod::Daily(time))
         }
         // Weekly
         2 => {
@@ -423,7 +423,7 @@ pub fn create_event_interact() -> Option<command::CreateCommand> {
                 }
             };
 
-            Interval::Weekly(weekday, time)
+            Interval::Periodic(TimePeriod::Weekly(weekday, time))
         }
         // Monthly
         3 => {
@@ -442,7 +442,7 @@ pub fn create_event_interact() -> Option<command::CreateCommand> {
                 }
             };
 
-            Interval::Monthly(crate::event::MonthlyDay { day }, time)
+            Interval::Periodic(TimePeriod::Monthly(crate::event::MonthlyDay { day }, time))
         }
         // Annually
         4 => {
@@ -468,7 +468,7 @@ pub fn create_event_interact() -> Option<command::CreateCommand> {
                 }
             };
 
-            Interval::Annual(AnnualDay { month, day }, time)
+            Interval::Periodic(TimePeriod::Annual(AnnualDay { month, day }, time))
         }
         _ => unreachable!(),
     };
