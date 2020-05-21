@@ -1,5 +1,5 @@
 use super::*;
-use crate::event::{EventData, Interval, Status, TimeDelta};
+use crate::event::{EventData, Interval, Status, StatusKind, TimeDelta};
 use crate::view::tracker_cli::TrackerCli;
 use lazy_static::lazy_static;
 
@@ -20,8 +20,8 @@ fn event_lifecycle() {
     let event = tracker.event_mut(handle).unwrap();
 
     // Verify that the event is in dormant state
-    match event.1 {
-        Status::Dormant { .. } => {}
+    match event.1.status {
+        StatusKind::Dormant { .. } => {}
         _ => unreachable!(),
     }
 
@@ -127,4 +127,34 @@ fn trigger() {
         "first event was not triggered after setting it "
     );
     assert!(!tracker.event(untrig_uid).unwrap().is_triggered());
+}
+
+#[test]
+fn complete() {
+    let mut tracker = Tracker::empty();
+
+    let handle = tracker.add_event(TEST_EVENT.clone());
+
+    // Verify that the event is accessible with its handle
+    let event = tracker.event_mut(handle).unwrap();
+
+    // Verify that the event is in dormant state
+    match event.1.status {
+        StatusKind::Dormant { .. } => {}
+        _ => unreachable!(),
+    }
+
+    // Trigger the event
+    event.trigger_now();
+
+    // Verify it's triggered
+    assert!(tracker.event_mut(handle).unwrap().is_triggered());
+
+    let event = tracker.event_mut(handle).unwrap();
+
+    // Complete the event handle
+    event.complete_now();
+
+    // Verify it's completed
+    assert!(tracker.event_mut(handle).unwrap().is_completed());
 }

@@ -1,4 +1,4 @@
-use crate::event::{AnnualDay, EventData, Interval, Status};
+use crate::event::{AnnualDay, EventData, Interval, Status, StatusKind};
 use crate::prelude::*;
 use crate::tracker;
 use chrono::{DateTime, Duration, Local, Timelike, Weekday};
@@ -181,13 +181,16 @@ impl TrackerCli {
             ViewState::Standard => {
                 let mut filtered_events = events
                     .iter()
-                    .filter(|&(_, event)| match event.1 {
-                        Status::TriggeredAt(_) => true,
-                        // Show other entries if their next trigger is within look-ahead scope
-                        _ => match event.fraction_of_interval_remaining(&now) {
-                            Some(remaining) if remaining < LOOK_AHEAD_FRAC => true,
-                            _ => false,
-                        },
+                    .filter(|&(_, event)| {
+                        if event.1.is_triggered() {
+                            true
+                        } else {
+                            // Show other entries if their next trigger is within look-ahead scope
+                            match event.fraction_of_interval_remaining(&now) {
+                                Some(remaining) if remaining < LOOK_AHEAD_FRAC => true,
+                                _ => false,
+                            }
+                        }
                     })
                     .map(|&x| x)
                     .collect::<Vec<(tracker::Uid, &TrackedEvent)>>();
@@ -282,9 +285,9 @@ impl TrackerCli {
 
     fn print_event_line(&self, idx: usize, event: &TrackedEvent, now: &LocalTime) {
         match self.state {
-            ViewState::Standard => match event.1 {
+            ViewState::Standard => match event.1.status {
                 // Show triggered entries
-                Status::TriggeredAt(_) => {
+                StatusKind::Triggered => {
                     println!("* ({id:>2})   {text}", id = idx, text = event.text());
                 }
                 // Show non-triggered with details if requested
@@ -321,8 +324,8 @@ impl TrackerCli {
                         ),
                     },
                     state = &event.1,
-                    trig = match event.1 {
-                        Status::TriggeredAt(_) => "*",
+                    trig = match event.1.status {
+                        StatusKind::Triggered => "*",
                         _ => " ",
                     }
                 );

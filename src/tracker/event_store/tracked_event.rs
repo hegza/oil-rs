@@ -1,4 +1,4 @@
-use crate::event::{AnnualDay, EventData, Interval, MonthlyDay, Status};
+use crate::event::{AnnualDay, EventData, Interval, MonthlyDay, Status, StatusKind};
 use crate::prelude::*;
 use chrono::{Datelike, FixedOffset, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -20,6 +20,9 @@ impl TrackedEvent {
     }
     pub fn is_done(&self) -> bool {
         self.1.is_done()
+    }
+    pub fn is_completed(&self) -> bool {
+        self.is_done()
     }
     pub fn text(&self) -> &str {
         self.0.text()
@@ -43,8 +46,10 @@ impl TrackedEvent {
     }
     /// Returns true if the event moved from an untriggered start to a triggered state
     pub fn trigger_now(&mut self) -> bool {
-        self.1.trigger_now();
-        true
+        self.1.trigger_now()
+    }
+    pub fn complete_now(&mut self) -> bool {
+        self.1.complete_now()
     }
     /// Returns None if the fraction cannot be evaluated
     /// TODO: doesn't work for multi-annual
@@ -53,7 +58,7 @@ impl TrackedEvent {
         let event = &self.0;
 
         // Does not stack -> does not re-trigger
-        if let Status::TriggeredAt(_) = state {
+        if let StatusKind::Triggered = state.status {
             if !event.stacks() {
                 return None;
             }
@@ -82,30 +87,37 @@ impl TrackedEvent {
         let state = &self.1;
 
         // Does not stack -> does not re-trigger
-        if let Status::TriggeredAt(_) = state {
+        if let StatusKind::Triggered = state.status {
             if !self.0.stacks() {
                 return None;
             }
         }
 
-        let last_trigger = match &&state {
-            Status::Dormant(registered) => registered,
-            Status::TriggeredAt(trigger_times) => trigger_times.last().unwrap(),
-            Status::Completed(time) => time,
-        }
-        .0;
+        // Start counting the next time of trigger from the previous trigger time if possible, otherwise, pick 1. time of registration, 2. time of skipping, time of completion
+        let count_point = match state.prev_trigger_time() {
+            Some(t) => t,
+            None => {
+                match &state.status {
+                    StatusKind::Dormant(t) => t,
+                    StatusKind::Skip(t) => t,
+                    StatusKind::Completed(t) => t,
+                    _ => unreachable!(),
+                }
+                .0
+            }
+        };
         match interval {
-            Interval::FromLastCompletion(delta) => Some(delta.apply_to(last_trigger)),
+            Interval::FromLastCompletion(delta) => Some(delta.apply_to(count_point)),
             Interval::Annual(AnnualDay { month, day }, time) => {
                 let an_instance = LocalTime::from_utc(
-                    NaiveDate::from_ymd(last_trigger.year(), *month, *day).and_time(*time),
+                    NaiveDate::from_ymd(count_point.year(), *month, *day).and_time(*time),
                     FixedOffset::east(0),
                 );
 
                 // If the constructed instance is before our time, move it one year forward and return
-                Some(if an_instance < last_trigger {
+                Some(if an_instance < count_point {
                     LocalTime::from_utc(
-                        NaiveDate::from_ymd(last_trigger.year() + 1, *month, *day).and_time(*time),
+                        NaiveDate::from_ymd(count_point.year() + 1, *month, *day).and_time(*time),
                         FixedOffset::east(0),
                     )
                 } else {
@@ -115,15 +127,15 @@ impl TrackedEvent {
             Interval::MultiAnnual(_days) => unimplemented!(),
             Interval::Monthly(MonthlyDay { day }, time) => {
                 let an_instance = LocalTime::from_utc(
-                    NaiveDate::from_ymd(last_trigger.year(), last_trigger.month(), *day)
+                    NaiveDate::from_ymd(count_point.year(), count_point.month(), *day)
                         .and_time(*time),
                     FixedOffset::east(0),
                 );
 
                 // If the constructed instance is before our time, move it one month forward and return
-                Some(if an_instance < last_trigger {
+                Some(if an_instance < count_point {
                     LocalTime::from_utc(
-                        NaiveDate::from_ymd(last_trigger.year(), last_trigger.month() + 1, *day)
+                        NaiveDate::from_ymd(count_point.year(), count_point.month() + 1, *day)
                             .and_time(*time),
                         FixedOffset::east(0),
                     )
@@ -134,8 +146,8 @@ impl TrackedEvent {
             Interval::Weekly(weekday, time) => {
                 let an_instance = LocalTime::from_utc(
                     NaiveDate::from_isoywd(
-                        last_trigger.year(),
-                        last_trigger.iso_week().week(),
+                        count_point.year(),
+                        count_point.iso_week().week(),
                         *weekday,
                     )
                     .and_time(*time),
@@ -143,11 +155,11 @@ impl TrackedEvent {
                 );
 
                 // If the constructed instance is before our time, move it one week forward and return
-                Some(if an_instance < last_trigger {
+                Some(if an_instance < count_point {
                     LocalTime::from_utc(
                         NaiveDate::from_isoywd(
-                            last_trigger.year(),
-                            last_trigger.iso_week().week() + 1,
+                            count_point.year(),
+                            count_point.iso_week().week() + 1,
                             *weekday,
                         )
                         .and_time(*time),
@@ -159,22 +171,18 @@ impl TrackedEvent {
             }
             Interval::Daily(time) => {
                 let an_instance = LocalTime::from_utc(
-                    NaiveDate::from_ymd(
-                        last_trigger.year(),
-                        last_trigger.month(),
-                        last_trigger.day(),
-                    )
-                    .and_time(*time),
+                    NaiveDate::from_ymd(count_point.year(), count_point.month(), count_point.day())
+                        .and_time(*time),
                     FixedOffset::east(0),
                 );
 
                 // If the constructed instance is before our time, move it one month forward and return
-                Some(if an_instance < last_trigger {
+                Some(if an_instance < count_point {
                     LocalTime::from_utc(
                         NaiveDate::from_ymd(
-                            last_trigger.year(),
-                            last_trigger.month(),
-                            last_trigger.day() + 1,
+                            count_point.year(),
+                            count_point.month(),
+                            count_point.day() + 1,
                         )
                         .and_time(*time),
                         FixedOffset::east(0),
