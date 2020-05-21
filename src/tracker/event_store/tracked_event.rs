@@ -52,7 +52,6 @@ impl TrackedEvent {
         self.1.complete_now()
     }
     /// Returns None if the fraction cannot be evaluated
-    /// TODO: doesn't work for multi-annual
     pub fn fraction_of_interval_remaining(&self, at_time: &LocalTime) -> Option<f64> {
         let state = &self.1;
         let event = &self.0;

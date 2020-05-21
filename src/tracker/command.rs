@@ -1,7 +1,7 @@
 use super::error::CommandError;
 use super::event_store::Uid;
 use super::{TrackedEvent, Tracker};
-use crate::event::{EventData, Status};
+use crate::event::{EventData, Interval, Status};
 use crate::prelude::*;
 use crate::view::tracker_cli::{TrackerCli, ViewState};
 use chrono::Local;
@@ -497,9 +497,18 @@ impl Apply for CompleteCommand {
                 for &uid in uids {
                     // Op
                     let old_state = match tracker.event_mut(uid) {
-                        Some(TrackedEvent(_, state)) => {
+                        Some(TrackedEvent(ev, state)) => {
                             let old_state = state.clone();
-                            state.complete_now();
+                            match ev.interval() {
+                                // If event is timespan-based, set it complete, post-poning next triggering
+                                Interval::FromLastCompletion(_) => {
+                                    state.complete_now();
+                                }
+                                // If event is periodic, set it as skipped, canceling the next triggering
+                                Interval::Periodic(_) => {
+                                    state.skip_now();
+                                }
+                            }
                             old_state
                         }
                         None => return Err(CommandError::EventNotFound(uid)),

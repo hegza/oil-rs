@@ -290,22 +290,26 @@ impl TrackerCli {
                 StatusKind::Triggered => {
                     println!("* ({id:>2})   {text}", id = idx, text = event.text());
                 }
-                // Show non-triggered with details if requested
+                // Show non-triggered if close to triggering, HACK: unless they're "Skip"
                 _ => {
                     if let Some(_) = event.fraction_of_interval_remaining(now) {
-                        println!(
-                            "  ({id:>2})   ({text}) - (triggers {time})",
-                            id = idx,
-                            text = event.text(),
-                            time = {
-                                let t = event.next_trigger_time().unwrap();
-                                if is_today(&t) {
-                                    t.format("today at %H:%M")
-                                } else {
-                                    t.format("on %d.%m. at %H:%M")
+                        if let StatusKind::Skip(_) = event.1.status {
+                            return;
+                        } else {
+                            println!(
+                                "  ({id:>2})   ({text}) - (triggers {time})",
+                                id = idx,
+                                text = event.text(),
+                                time = {
+                                    let t = event.next_trigger_time().unwrap();
+                                    if is_today(&t) {
+                                        t.format("today at %H:%M")
+                                    } else {
+                                        t.format("on %d.%m. at %H:%M")
+                                    }
                                 }
-                            }
-                        );
+                            );
+                        }
                     }
                 }
             },
