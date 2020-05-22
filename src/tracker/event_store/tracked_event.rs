@@ -40,11 +40,13 @@ impl TrackedEvent {
             self.trigger_now();
         }
     }
-    /// Returns true if the event moved from an untriggered start to a triggered state
+    /// Returns true if the event moved from an untriggered start to a triggered
+    /// state
     pub fn trigger_at(&mut self, _t: LocalTime) -> bool {
         unimplemented!()
     }
-    /// Returns true if the event moved from an untriggered start to a triggered state
+    /// Returns true if the event moved from an untriggered start to a triggered
+    /// state
     pub fn trigger_now(&mut self) -> bool {
         self.1.trigger_now()
     }
@@ -80,7 +82,8 @@ impl TrackedEvent {
             }
         }
     }
-    /// Returns the next time this event is going to trigger. Returns None if currently triggered.
+    /// Returns the next time this event is going to trigger. Returns None if
+    /// currently triggered.
     pub fn next_trigger_time(&self) -> Option<LocalTime> {
         let interval = self.0.interval();
         let state = &self.1;
@@ -92,7 +95,9 @@ impl TrackedEvent {
             }
         }
 
-        // Start counting the next time of trigger from the previous trigger time if possible, otherwise, pick 1. time of registration, 2. time of skipping, time of completion
+        // Start counting the next time of trigger from the previous trigger time if
+        // possible, otherwise, pick 1. time of registration, 2. time of skipping, time
+        // of completion
         let count_point = match state.prev_trigger_time() {
             Some(t) => t,
             None => {
@@ -113,7 +118,8 @@ impl TrackedEvent {
                     FixedOffset::east(0),
                 );
 
-                // If the constructed instance is before our time, move it one year forward and return
+                // If the constructed instance is before our time, move it one year forward and
+                // return
                 Some(if an_instance < count_point {
                     LocalTime::from_utc(
                         NaiveDate::from_ymd(count_point.year() + 1, *month, *day).and_time(*time),
@@ -131,7 +137,8 @@ impl TrackedEvent {
                     FixedOffset::east(0),
                 );
 
-                // If the constructed instance is before our time, move it one month forward and return
+                // If the constructed instance is before our time, move it one month forward and
+                // return
                 Some(if an_instance < count_point {
                     LocalTime::from_utc(
                         NaiveDate::from_ymd(count_point.year(), count_point.month() + 1, *day)
@@ -153,7 +160,8 @@ impl TrackedEvent {
                     FixedOffset::east(0),
                 );
 
-                // If the constructed instance is before our time, move it one week forward and return
+                // If the constructed instance is before our time, move it one week forward and
+                // return
                 Some(if an_instance < count_point {
                     LocalTime::from_utc(
                         NaiveDate::from_isoywd(
@@ -175,7 +183,8 @@ impl TrackedEvent {
                     FixedOffset::east(0),
                 );
 
-                // If the constructed instance is before our time, move it one month forward and return
+                // If the constructed instance is before our time, move it one month forward and
+                // return
                 Some(if an_instance < count_point {
                     LocalTime::from_utc(
                         NaiveDate::from_ymd(

@@ -43,7 +43,8 @@ impl TrackerCli {
         }
     }
 
-    /// 1. Display tracker, 2. get input (modal), 3. refresh status from disk, 4. apply changes.
+    /// 1. Display tracker, 2. get input (modal), 3. refresh status from disk,
+    /// 4. apply changes.
     pub fn interact_modal<P>(&mut self, path: P)
     where
         P: AsRef<Path>,
@@ -576,8 +577,8 @@ fn sort_by_next_trigger(te1: &TrackedEvent, te2: &TrackedEvent) -> Ordering {
     match (te1.next_trigger_time(), te2.next_trigger_time()) {
         // Both are going to trigger in the future: later trigger == greater (goes later in list)
         (Some(t1), Some(t2)) => t1.cmp(&t2),
-        // First one has a time when it's going to trigger, the other one is probably triggered already
-        // => First is greater (goes later in list)
+        // First one has a time when it's going to trigger, the other one is probably triggered
+        // already => First is greater (goes later in list)
         (Some(_), None) => Ordering::Greater,
         // First one triggered, the second
         (None, Some(_)) => Ordering::Less,

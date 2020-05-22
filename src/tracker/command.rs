@@ -39,13 +39,15 @@ macro_rules! cmd {
     };
 }
 
-/// This list is used to determine the user interface for the tracker, and the availability and parsing order of commands.
+/// This list is used to determine the user interface for the tracker, and the
+/// availability and parsing order of commands.
 ///
 /// To add a new command:
 /// 1. write the required fields to cmd macro
 /// 2. add enum variant
 /// 3. implement parser in match_command (as prompted by compiler)
-/// cmd!('key on UI', 'acceptable keys', 'short decription', 'CommandInput enum for matching to functionality')
+/// cmd!('key on UI', 'acceptable keys', 'short decription', 'CommandInput enum
+/// for matching to functionality')
 pub static COMMAND_KEYS: CommandKeys = {
     use CommandInput::*;
     CommandKeys(&[
@@ -111,7 +113,8 @@ enum CommandInput {
 
 /// Represents the interface between user interaction and internal commands
 ///
-/// Used for user-interaction displays and for resolving which command to execute.
+/// Used for user-interaction displays and for resolving which command to
+/// execute.
 pub struct CommandKey {
     /// Name is displayable in UI, 5 characters or so
     pub name: &'static str,
@@ -500,11 +503,13 @@ impl Apply for CompleteCommand {
                         Some(TrackedEvent(ev, state)) => {
                             let old_state = state.clone();
                             match ev.interval() {
-                                // If event is timespan-based, set it complete, post-poning next triggering
+                                // If event is timespan-based, set it complete, post-poning next
+                                // triggering
                                 Interval::FromLastCompletion(_) => {
                                     state.complete_now();
                                 }
-                                // If event is periodic, set it as skipped, canceling the next triggering
+                                // If event is periodic, set it as skipped, canceling the next
+                                // triggering
                                 Interval::Periodic(_) => {
                                     state.skip_now();
                                 }

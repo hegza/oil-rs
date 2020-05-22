@@ -23,8 +23,8 @@ pub enum StoreError {
     SerializeFailed(Box<serde_yaml::Error>),
 }
 
-/// Represents a situation where an item was added to a map that already had an item with the key.
-/// Parameters: key, old value, new value.
+/// Represents a situation where an item was added to a map that already had an
+/// item with the key. Parameters: key, old value, new value.
 #[derive(Debug)]
 pub struct ItemAlreadyExistsError<K, V>(pub K, pub V, pub V)
 where

@@ -2,7 +2,10 @@ use super::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Interval {
+    /// Interval that depends on time of completion
     FromLastCompletion(TimeDelta),
+    /// A fixed interval between a certain time on multiple subsequent specified
+    /// days
     Periodic(TimePeriod),
 }
 

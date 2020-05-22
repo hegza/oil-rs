@@ -117,7 +117,8 @@ impl EventStore {
 
     /// Adds an event by UID
     ///
-    /// If the data structure already had an item with this UID, ItemAlreadyExistsError is returned.
+    /// If the data structure already had an item with this UID,
+    /// ItemAlreadyExistsError is returned.
     pub fn add(
         &mut self,
         uid: Uid,
@@ -131,7 +132,8 @@ impl EventStore {
 
     /// Removes and returns an event by UID
     ///
-    /// If the data structure did not have an item with this UID, NotFoundError is returned
+    /// If the data structure did not have an item with this UID, NotFoundError
+    /// is returned
     pub fn remove(&mut self, uid: Uid) -> Result<TrackedEvent, NotFoundError<Uid>> {
         match self.0.remove(&uid) {
             Some(te) => Ok(te),
@@ -141,7 +143,8 @@ impl EventStore {
 
     /// Returns a &mut to a stored event
     ///
-    /// If the data structure did not have an item with this UID, NotFoundError is returned
+    /// If the data structure did not have an item with this UID, NotFoundError
+    /// is returned
     pub fn get_mut(&mut self, uid: Uid) -> Result<&mut TrackedEvent, NotFoundError<Uid>> {
         match self.0.get_mut(&uid) {
             Some(te) => Ok(te),

@@ -20,7 +20,8 @@ pub enum StatusKind {
     Skip(Time),
 }
 
-/// Implements PartialEq such that Dormant(t), Completed(t) and Skip(t) instances are equal regardless of inner time value.
+/// Implements PartialEq such that Dormant(t), Completed(t) and Skip(t)
+/// instances are equal regardless of inner time value.
 impl PartialEq for StatusKind {
     fn eq(&self, other: &Self) -> bool {
         use StatusKind::*;
@@ -29,7 +30,8 @@ impl PartialEq for StatusKind {
             (Completed(_), Completed(_)) => true,
             (Skip(_), Skip(_)) => true,
             (Triggered, Triggered) => true,
-            // Cover the false cases to future-proof and cause a compile error when a new variant is added.
+            // Cover the false cases to future-proof and cause a compile error when a new variant is
+            // added.
             (Dormant(_), _) => false,
             (Triggered, _) => false,
             (Completed(_), _) => false,
@@ -71,7 +73,8 @@ impl Status {
         }
     }
 
-    /// Returns true if the event moved from an untriggered start to a triggered state
+    /// Returns true if the event moved from an untriggered start to a triggered
+    /// state
     pub fn trigger_now(&mut self) -> bool {
         let now = Time::now();
         match &self.status {
@@ -92,7 +95,9 @@ impl Status {
             }
         }
     }
-    /// Returns true if the event was completed at this time as effect of this function. Resets the list of trigger times to vec![]. Sets the item completed even if the item is set to be skipped.
+    /// Returns true if the event was completed at this time as effect of this
+    /// function. Resets the list of trigger times to vec![]. Sets the item
+    /// completed even if the item is set to be skipped.
     pub fn complete_now(&mut self) -> bool {
         let now = Time::now();
         let ret;
