@@ -56,6 +56,17 @@ impl Default for StatusKind {
 }
 
 impl Status {
+    /// Use `.default()` to construct a status with the correct internal state.
+    /// This secondary
+    // constructor is intended for use in testing.
+    #[cfg(test)]
+    pub fn from_time(time: Time) -> Status {
+        Status {
+            trigger_times: vec![],
+            status: StatusKind::Dormant(time),
+        }
+    }
+
     /// Returns true if status is exactly `Triggered`
     pub fn is_triggered(&self) -> bool {
         match self.status {

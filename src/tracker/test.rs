@@ -1,6 +1,7 @@
 use super::*;
-use crate::event::{EventData, Interval, Status, StatusKind, TimeDelta};
+use crate::event::{EventData, Interval, Status, StatusKind, TimeDelta, TimePeriod};
 use crate::view::tracker_cli::TrackerCli;
+use chrono::{DateTime, Datelike, NaiveTime};
 use lazy_static::lazy_static;
 
 lazy_static! {
@@ -157,4 +158,35 @@ fn complete() {
 
     // Verify it's completed
     assert!(tracker.event_mut(handle).unwrap().is_completed());
+}
+
+#[test]
+fn month_end_triggers_next_day() {
+    let mut tracker = Tracker::empty();
+
+    let event = EventData::new(
+        Interval::Periodic(TimePeriod::Daily(
+            NaiveTime::parse_from_str("15:00", "%H:%M").unwrap(),
+        )),
+        "Daily event".to_string(),
+    );
+
+    let handle = tracker.add_event_with_status(
+        event,
+        Status::from_time(Time(
+            DateTime::parse_from_rfc3339("2020-01-31T14:00:00-02:00")
+                .unwrap()
+                .into(),
+        )),
+    );
+
+    // Verify event triggers next on Feb. 1st
+    let trigger_date = tracker
+        .event(handle)
+        .unwrap()
+        .next_trigger_time()
+        .unwrap()
+        .date()
+        .naive_local();
+    assert!(trigger_date.month() == 2 && trigger_date.day() == 1);
 }
