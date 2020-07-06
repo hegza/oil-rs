@@ -381,12 +381,12 @@ impl_cmd!(AlterCommand(Uid, EventData), |self, target| {
                 }
                 Some(e) => e,
             };
-            let new_uid = tracker.add_event_with_state(new_event.clone(), old_event.1.clone());
+            let new_uid = tracker.add_event_with_status(new_event.clone(), old_event.1.clone());
 
             // Undo
             Ok(Some(Box::new(move |tracker: &mut Tracker| {
                 tracker.remove_event(new_uid);
-                tracker.add_event_with_state(old_event.0, old_event.1);
+                tracker.add_event_with_status(old_event.0, old_event.1);
             })))
         }
         CommandReceiver::TrackerCli(_) => {
@@ -473,7 +473,7 @@ impl Apply for RemoveCommand {
                 // Undo
                 Ok(Some(Box::new(move |tracker| {
                     for event in events {
-                        tracker.add_event_with_state(event.0, event.1);
+                        tracker.add_event_with_status(event.0, event.1);
                     }
                 })))
             }

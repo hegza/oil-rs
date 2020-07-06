@@ -115,7 +115,7 @@ impl Tracker {
     }
 
     pub fn add_event(&mut self, event: EventData) -> event_store::Uid {
-        self.add_event_with_state(event, Status::default())
+        self.add_event_with_status(event, Status::default())
     }
 
     // Returns None if an event was not found with id
@@ -128,7 +128,7 @@ impl Tracker {
         }
     }
 
-    pub fn add_event_with_state(&mut self, event: EventData, state: Status) -> event_store::Uid {
+    pub fn add_event_with_status(&mut self, event: EventData, state: Status) -> event_store::Uid {
         let uid = self.tracked_events.next_free_uid();
         debug!("Registering a new event with UID {}: {:?}", uid, event);
         let tracked_event = TrackedEvent::with_state(event, state);
