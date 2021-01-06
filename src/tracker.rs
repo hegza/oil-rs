@@ -3,9 +3,8 @@ mod error;
 pub mod event_store;
 #[cfg(test)]
 mod test;
-mod time;
 
-use crate::event::{EventData, Status};
+use crate::datamodel::{EventData, Status};
 use crate::prelude::*;
 use crate::tracker::command::{Apply, CommandReceiver, FnApply};
 use dialoguer::Confirmation;
@@ -15,7 +14,6 @@ pub use event_store::Uid;
 use event_store::{EventStore, TrackedEvent};
 use std::iter::FromIterator;
 use std::path::Path;
-pub use time::Time;
 
 pub struct Tracker {
     tracked_events: EventStore,

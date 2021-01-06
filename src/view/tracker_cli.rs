@@ -1,4 +1,4 @@
-use crate::event::{AnnualDay, EventData, Interval, Status, StatusKind, TimePeriod};
+use crate::datamodel::*;
 use crate::prelude::*;
 use crate::tracker;
 use chrono::{DateTime, Duration, Local, Timelike, Weekday};
@@ -447,7 +447,7 @@ pub fn create_event_interact() -> Option<command::CreateCommand> {
                 }
             };
 
-            Interval::Periodic(TimePeriod::Monthly(crate::event::MonthlyDay { day }, time))
+            Interval::Periodic(TimePeriod::Monthly(MonthlyDay { day }, time))
         }
         // Annually
         4 => {
@@ -481,7 +481,7 @@ pub fn create_event_interact() -> Option<command::CreateCommand> {
     Some(command::CreateCommand(EventData::new(interval, text)))
 }
 
-pub fn create_timedelta() -> Option<crate::event::TimeDelta> {
+pub fn create_timedelta() -> Option<TimeDelta> {
     let choices = &[
         // "Days(i32)"
         "Trigger every N days",
@@ -500,14 +500,14 @@ pub fn create_timedelta() -> Option<crate::event::TimeDelta> {
             let days = input("Input a number of days for the interval");
             match days {
                 None => return None,
-                Some(d) => Some(crate::event::TimeDelta::Days(d)),
+                Some(d) => Some(TimeDelta::Days(d)),
             }
         }
         1 => {
             let time = input_time("Input a time interval, eg. 2:15 for 2 hours 15 minutes");
             match time {
                 None => return None,
-                Some(t) => Some(crate::event::TimeDelta::Hm(
+                Some(t) => Some(TimeDelta::Hm(
                     t.hour().try_into().unwrap(),
                     t.minute().try_into().unwrap(),
                 )),

@@ -1,5 +1,5 @@
 use super::*;
-use crate::event::{EventData, Interval, Status, StatusKind, TimeDelta, TimePeriod};
+use crate::datamodel::*;
 use crate::view::tracker_cli::TrackerCli;
 use chrono::{DateTime, Datelike, NaiveTime};
 use lazy_static::lazy_static;

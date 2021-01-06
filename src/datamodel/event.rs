@@ -1,9 +1,7 @@
-mod interval;
 mod status;
 
+use crate::datamodel::*;
 use crate::prelude::*;
-use chrono::{Duration, NaiveTime, Weekday};
-pub use interval::*;
 use serde::{Deserialize, Serialize};
 pub use status::*;
 

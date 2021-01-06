@@ -1,6 +1,5 @@
-mod tracked_event;
-
 use super::error::{ItemAlreadyExistsError, LoadError, NotFoundError, StoreError};
+pub use crate::datamodel::{TrackedEvent, Uid};
 use crate::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -8,7 +7,6 @@ use std::fmt;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
-pub use tracked_event::{TrackedEvent, Uid};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(transparent)]

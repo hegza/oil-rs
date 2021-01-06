@@ -1,5 +1,5 @@
 mod config;
-mod event;
+pub mod datamodel;
 pub mod prelude;
 mod tracker;
 mod view;

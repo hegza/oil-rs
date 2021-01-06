@@ -1,6 +1,7 @@
 use super::error::CommandError;
 use super::event_store::Uid;
 use super::Tracker;
+use crate::datamodel::{EventData, Interval, TrackedEvent};
 use crate::prelude::*;
 use crate::view::tracker_cli::{TrackerCli, ViewState};
 use dialoguer::Confirmation;

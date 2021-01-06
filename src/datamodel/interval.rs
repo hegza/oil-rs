@@ -1,4 +1,6 @@
-use super::*;
+use crate::prelude::*;
+use chrono::{Duration, NaiveTime, Weekday};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Interval {
