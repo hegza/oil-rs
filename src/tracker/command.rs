@@ -1,10 +1,8 @@
 use super::error::CommandError;
 use super::event_store::Uid;
-use super::{TrackedEvent, Tracker};
-use crate::event::{EventData, Interval, Status};
+use super::Tracker;
 use crate::prelude::*;
 use crate::view::tracker_cli::{TrackerCli, ViewState};
-use chrono::Local;
 use dialoguer::Confirmation;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -185,7 +183,7 @@ pub fn match_command(input: &str, id_to_uid: &[Uid]) -> Option<CommandKind> {
     let input = input.trim();
 
     // Tokenize and trim tokens
-    let mut tokens = input.split_whitespace().map(|token| token.trim());
+    let tokens = input.split_whitespace().map(|token| token.trim());
 
     // No tokens? Early out
     if tokens.clone().count() == 0 {
