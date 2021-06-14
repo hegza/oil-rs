@@ -32,13 +32,8 @@ fn main() {
     // Try to open the last opened file from config cache
     info!("Looking for last opened path in config");
     let last_path = {
-        match config.last_open {
-            Some(last) => Some(
-                std::path::PathBuf::try_from(last)
-                    .expect("cannot parse path from cached 'last_open' string"),
-            ),
-            None => None,
-        }
+        config.last_open.map(|last| std::path::PathBuf::try_from(last)
+                    .expect("cannot parse path from cached 'last_open' string"))
     };
 
     // Set up the tracker or prompt the user for one

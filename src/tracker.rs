@@ -12,7 +12,7 @@ pub use error::LoadError;
 use error::*;
 pub use event_store::Uid;
 use event_store::{EventStore, TrackedEvent};
-use std::iter::FromIterator;
+
 use std::path::Path;
 
 pub struct Tracker {
@@ -95,7 +95,10 @@ impl Tracker {
     }
 
     pub fn events(&self) -> Vec<(event_store::Uid, &TrackedEvent)> {
-        Vec::from_iter(self.tracked_events.iter().map(|(uid, ev)| (*uid, ev)))
+        self.tracked_events
+            .iter()
+            .map(|(uid, ev)| (*uid, ev))
+            .collect::<Vec<_>>()
     }
 
     pub fn undo(&mut self) {
@@ -120,7 +123,7 @@ impl Tracker {
     pub fn remove_event(&mut self, uid: event_store::Uid) -> Option<(EventData, Status)> {
         match self.tracked_events.remove(uid) {
             // Found: separate the return value
-            Ok(TrackedEvent(data, state)) => Some((data.clone(), state.clone())),
+            Ok(TrackedEvent(data, state)) => Some((data, state)),
             // Not found: return None
             Err(_) => None,
         }

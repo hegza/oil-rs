@@ -72,7 +72,7 @@ impl EventStore {
                             "Writing serialized stream to file \"{}\"",
                             path.as_ref().canonicalize().unwrap().to_string_lossy()
                         );
-                        match file.write_all(&content_str.as_bytes()) {
+                        match file.write_all(content_str.as_bytes()) {
                             Ok(()) => {
                                 trace!("Write successful");
                                 Ok(())

@@ -57,7 +57,7 @@ pub fn choices(text: &str, choices: &[&str]) -> usize {
     Select::with_theme(&ColorfulTheme::default())
         .with_prompt(text)
         .default(0)
-        .items(&choices[..])
+        .items(choices)
         .interact()
         .unwrap()
 }

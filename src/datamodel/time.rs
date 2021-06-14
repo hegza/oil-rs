@@ -16,7 +16,7 @@ impl Serialize for Time {
         S: Serializer,
     {
         // Time with truncated nanoseconds
-        s.serialize_newtype_struct("Time", &self.0.with_nanosecond(0).unwrap_or_else(|| self.0))
+        s.serialize_newtype_struct("Time", &self.0.with_nanosecond(0).unwrap_or(self.0))
     }
 }
 

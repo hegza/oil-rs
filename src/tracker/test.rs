@@ -65,11 +65,11 @@ fn multiset_done() {
     let set_ev_ids = ev_it
         .by_ref()
         .take(2)
-        .map(|(idx, (uid, _))| (idx, uid.clone()))
+        .map(|(idx, (uid, _))| (idx, *uid))
         .collect::<Vec<(usize, Uid)>>();
     let unset_ev_ids = ev_it
         .take(1)
-        .map(|(idx, (uid, _))| (idx, uid.clone()))
+        .map(|(idx, (uid, _))| (idx, *uid))
         .collect::<Vec<(usize, Uid)>>();
 
     // Command to set two of the events as done, ie. "0 1"
@@ -99,7 +99,7 @@ fn trigger() {
 
         // Add two events
         tracker.add_event(ev.clone());
-        tracker.add_event(ev.clone());
+        tracker.add_event(ev);
 
         tracker.events()
     };

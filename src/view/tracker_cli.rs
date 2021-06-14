@@ -38,8 +38,8 @@ impl TrackerCli {
         debug!("Applying command...");
         match self.apply_command(cmd) {
             ControlAction::Proceed => {}
-            ControlAction::Exit => return,
-            ControlAction::Input => return,
+            ControlAction::Exit => {}
+            ControlAction::Input => {}
         }
     }
 
@@ -118,7 +118,7 @@ impl TrackerCli {
 
         debug!("User input: '{}'", &input);
         let cmd = command::match_command(
-            &input,
+            input,
             &visible_events
                 .iter()
                 .map(|(uid, _)| *uid)
@@ -187,13 +187,9 @@ impl TrackerCli {
                             true
                         } else {
                             // Show other entries if their next trigger is within look-ahead scope
-                            match event.fraction_of_interval_remaining(&now) {
-                                Some(remaining) if remaining < LOOK_AHEAD_FRAC => true,
-                                _ => false,
-                            }
+                            matches!(event.fraction_of_interval_remaining(now), Some(remaining) if remaining < LOOK_AHEAD_FRAC)
                         }
-                    })
-                    .map(|&x| x)
+                    }).copied()
                     .collect::<Vec<(tracker::Uid, &TrackedEvent)>>();
                 filtered_events.sort_by(|(_, te1), (_, te2)| sort_by_next_trigger(te1, te2));
                 events = filtered_events;
@@ -266,9 +262,7 @@ impl TrackerCli {
                 );
                 let choices = ["Cancel"];
                 match crate::view::troubleshoot::choices(text, &choices) {
-                    0 => {
-                        return ControlAction::Input;
-                    }
+                    0 => ControlAction::Input,
                     _ => unreachable!(),
                 }
             }
@@ -291,9 +285,8 @@ impl TrackerCli {
                 }
                 // Show non-triggered if close to triggering, HACK: unless they're "Skip"
                 _ => {
-                    if let Some(_) = event.fraction_of_interval_remaining(now) {
+                    if event.fraction_of_interval_remaining(now).is_some() {
                         if let StatusKind::Skip(_) = event.1.status {
-                            return;
                         } else {
                             println!(
                                 "  ({id:>2})   ({text}) - (triggers {time})",
@@ -496,20 +489,13 @@ pub fn create_timedelta() -> Option<TimeDelta> {
     match selection {
         0 => {
             let days = input("Input a number of days for the interval");
-            match days {
-                None => return None,
-                Some(d) => Some(TimeDelta::Days(d)),
-            }
+            days.map(TimeDelta::Days)
         }
         1 => {
             let time = input_time("Input a time interval, eg. 2:15 for 2 hours 15 minutes");
-            match time {
-                None => return None,
-                Some(t) => Some(TimeDelta::Hm(
-                    t.hour().try_into().unwrap(),
-                    t.minute().try_into().unwrap(),
-                )),
-            }
+            time.map(|t| {
+                TimeDelta::Hm(t.hour().try_into().unwrap(), t.minute().try_into().unwrap())
+            })
         }
         _ => unreachable!(),
     }

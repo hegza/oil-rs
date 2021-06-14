@@ -7,7 +7,7 @@ use std::str::FromStr;
 use tracker::Tracker;
 
 /// Displays a UI for finding or creating a Tracker cache file.
-pub fn ask_tracker_file<'te>() -> (Tracker, PathBuf) {
+pub fn ask_tracker_file() -> (Tracker, PathBuf) {
     let choices = &[
         "Create a new file for storing events...",
         "Open an existing file with stored events...",
@@ -26,8 +26,9 @@ pub fn ask_tracker_file<'te>() -> (Tracker, PathBuf) {
             let default_path = match selection {
                 // Create
                 0 => [
-                    dirs::document_dir()
-                        .unwrap_or(PathBuf::from(shellexpand::full(".").unwrap().into_owned())),
+                    dirs::document_dir().unwrap_or_else(|| {
+                        PathBuf::from(shellexpand::full(".").unwrap().into_owned())
+                    }),
                     PathBuf::from("events.yaml"),
                 ]
                 .iter()

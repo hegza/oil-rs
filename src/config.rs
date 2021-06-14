@@ -40,7 +40,7 @@ impl Config {
             .truncate(true)
             .open(&config_path)
             .expect("Could not create default config file");
-        file.write_all(&config_str.as_bytes())
+        file.write_all(config_str.as_bytes())
             .expect("Could not write config to file");
     }
     pub fn load_default() -> Config {
@@ -79,7 +79,7 @@ impl Config {
                 .truncate(true)
                 .open(&config_path)
                 .expect("Could not create default config file");
-            file.write_all(&config_str.as_bytes())
+            file.write_all(config_str.as_bytes())
                 .expect("Could not write config to file");
             config
         }

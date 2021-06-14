@@ -194,7 +194,7 @@ pub fn match_command(input: &str, id_to_uid: &[Uid]) -> Option<CommandKind> {
 
     // Try to match a command from the first token
     use CommandKind::*;
-    match tokens.clone().nth(0).unwrap() {
+    match tokens.clone().next().unwrap() {
         first_token if COMMAND_KEYS.is_match(first_token) => {
             match COMMAND_KEYS.command_input(first_token) {
                 Some(cmd_input) => match cmd_input {
