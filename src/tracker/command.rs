@@ -436,8 +436,8 @@ impl Display for CommandKind {
         match self {
             CommandKind::CliCommand(apply) => write!(f, "{}", apply),
             CommandKind::DataCommand(apply) => write!(f, "{}", apply),
-            CommandKind::Undo => write!(f, "{}", "cmd-undo"),
-            CommandKind::Exit => write!(f, "{}", "cmd-exit"),
+            CommandKind::Undo => write!(f, "cmd-undo"),
+            CommandKind::Exit => write!(f, "cmd-exit"),
         }
     }
 }
@@ -601,7 +601,7 @@ fn match_id_interact<'i, I>(input: &'i mut I) -> Option<usize>
 where
     I: Iterator<Item = &'i str>,
 {
-    match input.nth(0) {
+    match input.next() {
         None => {
             Confirmation::new()
                 .with_text("rm requires another parameter: <uid>")
@@ -633,7 +633,7 @@ where
         Some(uid) => Some(*uid),
         None => {
             println!("No item found for key {}", id);
-            return None;
+            None
         }
     }
 }

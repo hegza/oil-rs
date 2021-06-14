@@ -211,7 +211,7 @@ impl TrackerCli {
         };
 
         // Figure out status
-        if visible_events.len() != 0 {
+        if !visible_events.is_empty() {
             let visible_events: Vec<(usize, &(Uid, &TrackedEvent))> =
                 visible_events.as_ref().iter().enumerate().collect();
             let split_idx = visible_events.iter().position(|(_idx, (_uid, event))| {
@@ -241,9 +241,7 @@ impl TrackerCli {
                     self.print_event_line(*idx, event, &now);
                 }
             }
-        }
-        // No events: print something else
-        else {
+        } else {
             println!("=== No Events ({})) ===", state_str);
         }
 

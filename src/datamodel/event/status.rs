@@ -132,6 +132,6 @@ impl Status {
     }
 
     pub fn prev_trigger_time(&self) -> Option<LocalTime> {
-        self.trigger_times.last().and_then(|t| Some(t.0))
+        self.trigger_times.last().map(|t| t.0)
     }
 }

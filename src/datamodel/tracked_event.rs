@@ -67,7 +67,7 @@ impl TrackedEvent {
 
         match self.next_trigger_time() {
             // Wait doesn't apply if the event is not going to trigger
-            None => return None,
+            None => None,
             Some(next) => {
                 let seconds_until_next = next.signed_duration_since(*at_time).num_seconds();
                 let interval_seconds = match event.interval().to_duration_heuristic() {
